@@ -394,307 +394,505 @@ relationshipTypes:
   - name: depends_on_app
     label: Depends On App
     description: Runtime or build-time dependency between two apps
-    sourceTypes: [App]
-    targetTypes: [App]
+    sourceType: App
+    targetType: App
 
   - name: contains_module
     label: Contains Module
     description: An app is composed of one or more modules
-    sourceTypes: [App]
-    targetTypes: [Module]
+    sourceType: App
+    targetType: Module
 
-  - name: uses_dependency
-    label: Uses Dependency
-    description: An app or module depends on an external library or service
-    sourceTypes: [App, Module]
-    targetTypes: [ExternalDependency]
+  - name: app_uses_dependency
+    label: App Uses Dependency
+    description: An app depends on an external library or service
+    sourceType: App
+    targetType: ExternalDependency
 
-  - name: configured_by
-    label: Configured By
-    description: An app, module, or service reads a config variable at runtime
-    sourceTypes: [App, Module, Service]
-    targetTypes: [ConfigVar]
+  - name: module_uses_dependency
+    label: Module Uses Dependency
+    description: A module depends on an external library or service
+    sourceType: Module
+    targetType: ExternalDependency
 
-  - name: uses_middleware
-    label: Uses Middleware
-    description: An app or module applies middleware to its request pipeline
-    sourceTypes: [App, Module]
-    targetTypes: [Middleware]
+  - name: app_configured_by
+    label: App Configured By
+    description: An app reads a config variable at runtime
+    sourceType: App
+    targetType: ConfigVar
+
+  - name: module_configured_by
+    label: Module Configured By
+    description: A module reads a config variable at runtime
+    sourceType: Module
+    targetType: ConfigVar
+
+  - name: service_configured_by
+    label: Service Configured By
+    description: A service reads a config variable at runtime
+    sourceType: Service
+    targetType: ConfigVar
+
+  - name: app_uses_middleware
+    label: App Uses Middleware
+    description: An app applies middleware to its request pipeline
+    sourceType: App
+    targetType: Middleware
+
+  - name: module_uses_middleware
+    label: Module Uses Middleware
+    description: A module applies middleware to its request pipeline
+    sourceType: Module
+    targetType: Middleware
 
   # ── Module-level structure ───────────────────────────────────────────────────
 
   - name: contains_file
     label: Contains File
     description: A module owns a source file
-    sourceTypes: [Module]
-    targetTypes: [SourceFile]
+    sourceType: Module
+    targetType: SourceFile
 
   - name: defines_context
     label: Defines Context
     description: A source file implements a screen, modal, or interaction surface
-    sourceTypes: [SourceFile]
-    targetTypes: [Context]
+    sourceType: SourceFile
+    targetType: Context
 
   - name: defines_component
     label: Defines Component
     description: A source file implements a UI component
-    sourceTypes: [SourceFile]
-    targetTypes: [UIComponent]
+    sourceType: SourceFile
+    targetType: UIComponent
 
   - name: defines_service
     label: Defines Service
     description: A source file implements a service
-    sourceTypes: [SourceFile]
-    targetTypes: [Service]
+    sourceType: SourceFile
+    targetType: Service
 
   - name: defines_model
     label: Defines Model
     description: A source file declares a data model
-    sourceTypes: [SourceFile]
-    targetTypes: [DataModel]
+    sourceType: SourceFile
+    targetType: DataModel
 
   - name: defines_action
     label: Defines Action
     description: A source file implements a user action or handler
-    sourceTypes: [SourceFile]
-    targetTypes: [Action]
+    sourceType: SourceFile
+    targetType: Action
 
   - name: defines_middleware
     label: Defines Middleware
     description: A source file implements a middleware handler
-    sourceTypes: [SourceFile]
-    targetTypes: [Middleware]
+    sourceType: SourceFile
+    targetType: Middleware
 
   - name: defines_job
     label: Defines Job
     description: A source file implements a background job or worker
-    sourceTypes: [SourceFile]
-    targetTypes: [Job]
+    sourceType: SourceFile
+    targetType: Job
 
   - name: defines_test_suite
     label: Defines Test Suite
     description: A source file is the test file for a test suite
-    sourceTypes: [SourceFile]
-    targetTypes: [TestSuite]
+    sourceType: SourceFile
+    targetType: TestSuite
 
   - name: defines_interface
     label: Defines Interface
     description: A source file declares the interface or contract for a service
-    sourceTypes: [SourceFile]
-    targetTypes: [Service]
+    sourceType: SourceFile
+    targetType: Service
 
   - name: entry_point_of
     label: Entry Point Of
     description: A source file is the main entry point for an app
-    sourceTypes: [SourceFile]
-    targetTypes: [App]
+    sourceType: SourceFile
+    targetType: App
 
   - name: contains_context
     label: Contains Context
     description: A module defines a screen, modal, or interaction surface
-    sourceTypes: [Module]
-    targetTypes: [Context]
+    sourceType: Module
+    targetType: Context
 
   - name: contains_component
     label: Contains Component
     description: A module defines a reusable UI component
-    sourceTypes: [Module]
-    targetTypes: [UIComponent]
+    sourceType: Module
+    targetType: UIComponent
 
   - name: contains_action
     label: Contains Action
     description: A module defines a user action or system operation
-    sourceTypes: [Module]
-    targetTypes: [Action]
+    sourceType: Module
+    targetType: Action
 
   - name: contains_service
     label: Contains Service
     description: A module owns a service
-    sourceTypes: [Module]
-    targetTypes: [Service]
+    sourceType: Module
+    targetType: Service
 
-  - name: depends_on
-    label: Depends On
-    description: A module or service imports or depends on another module or service
-    sourceTypes: [Module, Service]
-    targetTypes: [Module, Service]
+  - name: module_depends_on_module
+    label: Module Depends On Module
+    description: A module imports or depends on another module
+    sourceType: Module
+    targetType: Module
 
-  - name: provides_model
-    label: Provides Model
-    description: A module or service owns and defines a data model
-    sourceTypes: [Module, Service]
-    targetTypes: [DataModel]
+  - name: module_depends_on_service
+    label: Module Depends On Service
+    description: A module imports or depends on a service
+    sourceType: Module
+    targetType: Service
 
-  - name: exposes_endpoint
-    label: Exposes Endpoint
-    description: A module or service exposes an API endpoint
-    sourceTypes: [Module, Service]
-    targetTypes: [APIEndpoint]
+  - name: service_depends_on_module
+    label: Service Depends On Module
+    description: A service imports or depends on a module
+    sourceType: Service
+    targetType: Module
+
+  - name: service_depends_on_service
+    label: Service Depends On Service
+    description: A service imports or depends on another service
+    sourceType: Service
+    targetType: Service
+
+  - name: module_provides_model
+    label: Module Provides Model
+    description: A module owns and defines a data model
+    sourceType: Module
+    targetType: DataModel
+
+  - name: service_provides_model
+    label: Service Provides Model
+    description: A service owns and defines a data model
+    sourceType: Service
+    targetType: DataModel
+
+  - name: module_exposes_endpoint
+    label: Module Exposes Endpoint
+    description: A module exposes an API endpoint
+    sourceType: Module
+    targetType: APIEndpoint
+
+  - name: service_exposes_endpoint
+    label: Service Exposes Endpoint
+    description: A service exposes an API endpoint
+    sourceType: Service
+    targetType: APIEndpoint
 
   - name: grouped_in
     label: Grouped In
     description: An endpoint belongs to an API contract
-    sourceTypes: [APIEndpoint]
-    targetTypes: [APIContract]
+    sourceType: APIEndpoint
+    targetType: APIContract
 
   # ── Context / UIComponent / Action layer ────────────────────────────────────
 
   - name: uses_component
     label: Uses Component
     description: A context depends on a UI component to render part of its surface
-    sourceTypes: [Context]
-    targetTypes: [UIComponent]
+    sourceType: Context
+    targetType: UIComponent
 
   - name: nested_in
     label: Nested In
     description: A context is nested inside another context (e.g. modal inside screen, panel inside screen)
-    sourceTypes: [Context]
-    targetTypes: [Context]
+    sourceType: Context
+    targetType: Context
 
   - name: composed_of
     label: Composed Of
     description: A UI component is built from other UI components
-    sourceTypes: [UIComponent]
-    targetTypes: [UIComponent]
+    sourceType: UIComponent
+    targetType: UIComponent
 
   - name: available_in
     label: Available In
     description: An action is available within a context
-    sourceTypes: [Action]
-    targetTypes: [Context]
+    sourceType: Action
+    targetType: Context
 
   - name: navigates_to
     label: Navigates To
     description: An action navigates to a target context
-    sourceTypes: [Action]
-    targetTypes: [Context]
+    sourceType: Action
+    targetType: Context
 
-  - name: uses_service
-    label: Uses Service
-    description: A context, action, or UI component calls a frontend or backend service
-    sourceTypes: [Context, Action, UIComponent]
-    targetTypes: [Service]
+  - name: context_uses_service
+    label: Context Uses Service
+    description: A context calls a frontend or backend service
+    sourceType: Context
+    targetType: Service
 
-  - name: calls_endpoint
-    label: Calls Endpoint
-    description: >
-      A context, action, or UI component directly invokes an API endpoint.
-      Captures the direct wire between UI and backend — e.g. a button action
-      that POSTs to /api/users, or a screen that GETs its data on mount,
-      or a self-contained component that fetches its own list.
-    sourceTypes: [Context, Action, UIComponent]
-    targetTypes: [APIEndpoint]
+  - name: action_uses_service
+    label: Action Uses Service
+    description: An action calls a frontend or backend service
+    sourceType: Action
+    targetType: Service
 
-  - name: consumes_model
-    label: Consumes Model
-    description: >
-      A module, service, context, action, or UI component uses a data model —
-      as a form payload, API response shape, or local state type.
-    sourceTypes: [Module, Service, Context, Action, UIComponent]
-    targetTypes: [DataModel]
+  - name: component_uses_service
+    label: Component Uses Service
+    description: A UI component calls a frontend or backend service
+    sourceType: UIComponent
+    targetType: Service
+
+  - name: context_calls_endpoint
+    label: Context Calls Endpoint
+    description: A context directly invokes an API endpoint (e.g. a screen that GETs its data on mount)
+    sourceType: Context
+    targetType: APIEndpoint
+
+  - name: action_calls_endpoint
+    label: Action Calls Endpoint
+    description: An action directly invokes an API endpoint (e.g. a button action that POSTs to /api/users)
+    sourceType: Action
+    targetType: APIEndpoint
+
+  - name: component_calls_endpoint
+    label: Component Calls Endpoint
+    description: A self-contained UI component directly invokes an API endpoint
+    sourceType: UIComponent
+    targetType: APIEndpoint
+
+  - name: module_consumes_model
+    label: Module Consumes Model
+    description: A module uses a data model as a form payload, API response shape, or local state type
+    sourceType: Module
+    targetType: DataModel
+
+  - name: service_consumes_model
+    label: Service Consumes Model
+    description: A service uses a data model as a form payload, API response shape, or local state type
+    sourceType: Service
+    targetType: DataModel
+
+  - name: context_consumes_model
+    label: Context Consumes Model
+    description: A context uses a data model as a form payload, API response shape, or local state type
+    sourceType: Context
+    targetType: DataModel
+
+  - name: action_consumes_model
+    label: Action Consumes Model
+    description: An action uses a data model as a form payload, API response shape, or local state type
+    sourceType: Action
+    targetType: DataModel
+
+  - name: component_consumes_model
+    label: Component Consumes Model
+    description: A UI component uses a data model as a form payload, API response shape, or local state type
+    sourceType: UIComponent
+    targetType: DataModel
 
   # ── Scenario layer ───────────────────────────────────────────────────────────
 
   - name: executed_by
     label: Executed By
     description: A scenario is executed by an actor (user role or persona)
-    sourceTypes: [Scenario]
-    targetTypes: [Actor]
+    sourceType: Scenario
+    targetType: Actor
 
   - name: has_step
     label: Has Step
     description: A scenario contains an ordered step
-    sourceTypes: [Scenario]
-    targetTypes: [ScenarioStep]
+    sourceType: Scenario
+    targetType: ScenarioStep
 
   - name: variant_of
     label: Variant Of
     description: A scenario is an alternative path of another scenario
-    sourceTypes: [Scenario]
-    targetTypes: [Scenario]
+    sourceType: Scenario
+    targetType: Scenario
 
   - name: occurs_in
     label: Occurs In
     description: A scenario step takes place within a specific context
-    sourceTypes: [ScenarioStep]
-    targetTypes: [Context]
+    sourceType: ScenarioStep
+    targetType: Context
 
   - name: performs
     label: Performs
     description: A scenario step performs a specific action
-    sourceTypes: [ScenarioStep]
-    targetTypes: [Action]
+    sourceType: ScenarioStep
+    targetType: Action
 
   - name: inherits_from
     label: Inherits From
     description: An actor inherits permissions and capabilities from another actor
-    sourceTypes: [Actor]
-    targetTypes: [Actor]
+    sourceType: Actor
+    targetType: Actor
 
   # ── Service layer ────────────────────────────────────────────────────────────
 
   - name: calls_service
     label: Calls Service
     description: A service delegates to or orchestrates another service
-    sourceTypes: [Service]
-    targetTypes: [Service]
+    sourceType: Service
+    targetType: Service
 
-  - name: reads_from
-    label: Reads From
-    description: A service or job reads data from a database or store
-    sourceTypes: [Service, Job]
-    targetTypes: [Database]
+  - name: service_reads_from
+    label: Service Reads From
+    description: A service reads data from a database or store
+    sourceType: Service
+    targetType: Database
 
-  - name: writes_to
-    label: Writes To
-    description: A service or job writes data to a database or store
-    sourceTypes: [Service, Job]
-    targetTypes: [Database]
+  - name: job_reads_from
+    label: Job Reads From
+    description: A job reads data from a database or store
+    sourceType: Job
+    targetType: Database
+
+  - name: service_writes_to
+    label: Service Writes To
+    description: A service writes data to a database or store
+    sourceType: Service
+    targetType: Database
+
+  - name: job_writes_to
+    label: Job Writes To
+    description: A job writes data to a database or store
+    sourceType: Job
+    targetType: Database
 
   - name: stores_model
     label: Stores Model
     description: A database or store persists a data model
-    sourceTypes: [Database]
-    targetTypes: [DataModel]
+    sourceType: Database
+    targetType: DataModel
 
   # ── Events ───────────────────────────────────────────────────────────────────
 
-  - name: publishes_event
-    label: Publishes Event
-    description: A service, action, or job emits an event or message
-    sourceTypes: [Service, Action, Job]
-    targetTypes: [Event]
+  - name: service_publishes_event
+    label: Service Publishes Event
+    description: A service emits an event or message
+    sourceType: Service
+    targetType: Event
 
-  - name: subscribes_to
-    label: Subscribes To
-    description: A service, action, or job consumes an event or message
-    sourceTypes: [Service, Action, Job]
-    targetTypes: [Event]
+  - name: action_publishes_event
+    label: Action Publishes Event
+    description: An action emits an event or message
+    sourceType: Action
+    targetType: Event
+
+  - name: job_publishes_event
+    label: Job Publishes Event
+    description: A job emits an event or message
+    sourceType: Job
+    targetType: Event
+
+  - name: service_subscribes_to
+    label: Service Subscribes To
+    description: A service consumes an event or message
+    sourceType: Service
+    targetType: Event
+
+  - name: action_subscribes_to
+    label: Action Subscribes To
+    description: An action consumes an event or message
+    sourceType: Action
+    targetType: Event
+
+  - name: job_subscribes_to
+    label: Job Subscribes To
+    description: A job consumes an event or message
+    sourceType: Job
+    targetType: Event
 
   # ── Jobs ─────────────────────────────────────────────────────────────────────
 
-  - name: triggers_job
-    label: Triggers Job
-    description: A service or action enqueues or schedules a background job
-    sourceTypes: [Service, Action, Job]
-    targetTypes: [Job]
+  - name: service_triggers_job
+    label: Service Triggers Job
+    description: A service enqueues or schedules a background job
+    sourceType: Service
+    targetType: Job
+
+  - name: action_triggers_job
+    label: Action Triggers Job
+    description: An action enqueues or schedules a background job
+    sourceType: Action
+    targetType: Job
+
+  - name: job_triggers_job
+    label: Job Triggers Job
+    description: A job enqueues or schedules another background job
+    sourceType: Job
+    targetType: Job
 
   # ── Patterns & tests ─────────────────────────────────────────────────────────
 
-  - name: uses_pattern
-    label: Uses Pattern
-    description: A module, service, context, or UI component follows a named pattern
-    sourceTypes: [Module, Service, Context, UIComponent, Action]
-    targetTypes: [Pattern]
+  - name: module_uses_pattern
+    label: Module Uses Pattern
+    description: A module follows a named architectural pattern
+    sourceType: Module
+    targetType: Pattern
+
+  - name: service_uses_pattern
+    label: Service Uses Pattern
+    description: A service follows a named architectural pattern
+    sourceType: Service
+    targetType: Pattern
+
+  - name: context_uses_pattern
+    label: Context Uses Pattern
+    description: A context follows a named UI pattern
+    sourceType: Context
+    targetType: Pattern
+
+  - name: component_uses_pattern
+    label: Component Uses Pattern
+    description: A UI component follows a named UI pattern
+    sourceType: UIComponent
+    targetType: Pattern
+
+  - name: action_uses_pattern
+    label: Action Uses Pattern
+    description: An action follows a named pattern
+    sourceType: Action
+    targetType: Pattern
 
   - name: extends_pattern
     label: Extends Pattern
     description: One pattern builds upon or specializes another
-    sourceTypes: [Pattern]
-    targetTypes: [Pattern]
+    sourceType: Pattern
+    targetType: Pattern
 
-  - name: tested_by
-    label: Tested By
-    description: A context, UI component, service, action, or module is covered by a test suite
-    sourceTypes: [Context, UIComponent, Service, Action, Module, Scenario]
-    targetTypes: [TestSuite]
+  - name: context_tested_by
+    label: Context Tested By
+    description: A context is covered by a test suite
+    sourceType: Context
+    targetType: TestSuite
+
+  - name: component_tested_by
+    label: Component Tested By
+    description: A UI component is covered by a test suite
+    sourceType: UIComponent
+    targetType: TestSuite
+
+  - name: service_tested_by
+    label: Service Tested By
+    description: A service is covered by a test suite
+    sourceType: Service
+    targetType: TestSuite
+
+  - name: action_tested_by
+    label: Action Tested By
+    description: An action is covered by a test suite
+    sourceType: Action
+    targetType: TestSuite
+
+  - name: module_tested_by
+    label: Module Tested By
+    description: A module is covered by a test suite
+    sourceType: Module
+    targetType: TestSuite
+
+  - name: scenario_tested_by
+    label: Scenario Tested By
+    description: A scenario is covered by a test suite
+    sourceType: Scenario
+    targetType: TestSuite
