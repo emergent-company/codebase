@@ -1,1 +1,4 @@
 .agents/
+
+# codebase CLI binary
+cmd/codebase/codebase
