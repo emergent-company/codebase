@@ -2,3 +2,21 @@
 
 # codebase CLI binary
 cmd/codebase/codebase
+
+# build artifacts
+cmd/codebase/dist/
+*.tar.gz
+*.zip
+
+# env / secrets
+.env
+.env.local
+.env.*.local
+
+# user config
+.codebase.yml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

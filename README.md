@@ -1,14 +1,180 @@
-# code-memory-blueprint
+# codebase
 
-An [Emergent](https://emergent.company) blueprint that installs the **code-structure** template pack into a Memory knowledge graph project. It maps the structural and architectural layer of any software codebase — what the code *is*, not the workflow of building it. Works for any language or framework (Go, TypeScript, Python, Swift, Rust, etc.).
+An [Emergent](https://emergent.company) blueprint + CLI for mapping any software codebase into a Memory knowledge graph. Installs the **code-structure** template pack (21 object types, 42 relationship types) and ships the **`codebase` CLI** to populate, audit, and explore the graph.
+
+Works for any language or framework — Go, TypeScript, Python, Swift, Rust, etc.
 
 ---
 
-## What it installs
+## What's included
 
-### Template pack: `code-structure` (v1.0.0)
+| Component | Description |
+|---|---|
+| **Blueprint** (`packs/`) | `code-structure` template pack — schema only, no agents, no seed data |
+| **`codebase` CLI** (`cmd/codebase/`) | Sync, check, analyze, and manage your codebase knowledge graph |
+| **`graph-to-swagger`** (`tools/`) | Reconstruct an OpenAPI spec from the graph |
 
-**21 object types across 6 layers:**
+---
+
+## Quick start
+
+### 1. Install the blueprint
+
+```bash
+memory blueprints https://github.com/mkucharz/codebase --project <project-slug>
+```
+
+Or from a local clone:
+
+```bash
+git clone https://github.com/mkucharz/codebase
+memory blueprints ./codebase --project <project-slug>
+```
+
+This installs the `code-structure` template pack into your Emergent project.
+
+### 2. Install the CLI
+
+Download the latest release binary for your platform from [GitHub Releases](https://github.com/mkucharz/codebase/releases):
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/mkucharz/codebase/releases/latest/download/codebase-darwin-arm64 -o /usr/local/bin/codebase
+chmod +x /usr/local/bin/codebase
+
+# macOS (Intel)
+curl -L https://github.com/mkucharz/codebase/releases/latest/download/codebase-darwin-amd64 -o /usr/local/bin/codebase
+chmod +x /usr/local/bin/codebase
+
+# Linux (amd64)
+curl -L https://github.com/mkucharz/codebase/releases/latest/download/codebase-linux-amd64 -o /usr/local/bin/codebase
+chmod +x /usr/local/bin/codebase
+```
+
+> **Note:** The CLI requires an [Emergent](https://emergent.company) account and API key. Set `MEMORY_API_KEY` or configure `~/.memory/config.yaml`.
+
+### 3. Configure
+
+Create a `.codebase.yml` in your project root (see [Configuration](#configuration)).
+
+---
+
+## CLI reference
+
+### `codebase sync`
+
+Populate the graph by reading your codebase.
+
+```bash
+codebase sync routes       # sync HTTP routes → APIEndpoint objects
+codebase sync middleware   # sync middleware → Middleware objects
+codebase sync files        # sync source files → SourceFile objects
+codebase sync components   # sync UI components → UIComponent objects
+codebase sync actions      # sync actions → Action objects
+codebase sync scenarios    # sync scenarios → Scenario objects
+```
+
+### `codebase check`
+
+Audit the graph for gaps and inconsistencies.
+
+```bash
+codebase check api         # check API endpoint coverage
+codebase check coverage    # check test coverage
+codebase check complexity  # check complexity metrics
+codebase check logic       # check business logic completeness
+```
+
+### `codebase analyze`
+
+Explore and visualize the graph.
+
+```bash
+codebase analyze tree       # print dependency tree
+codebase analyze uml        # generate UML diagram
+codebase analyze scenarios  # list all scenarios
+codebase analyze contexts   # list all contexts
+```
+
+### `codebase graph`
+
+Direct CRUD on graph objects.
+
+```bash
+codebase graph get <key>
+codebase graph list <type>
+codebase graph create <type> [properties]
+codebase graph delete <key>
+```
+
+### `codebase constitution`
+
+Manage architectural rules.
+
+```bash
+codebase constitution rules       # list all rules
+codebase constitution check       # run all rules against the graph
+codebase constitution add-rule    # add a new rule interactively
+```
+
+### `codebase fix`
+
+Repair graph inconsistencies.
+
+```bash
+codebase fix stale    # remove stale objects
+codebase fix rewire   # rewire broken relationships
+```
+
+### `codebase branch`
+
+Work with Memory branches.
+
+```bash
+codebase branch verify   # verify branch consistency
+```
+
+### `codebase seed`
+
+Seed the graph with initial data.
+
+```bash
+codebase seed entities   # seed entity objects
+codebase seed exposes    # seed exposes relationships
+```
+
+### `codebase skills`
+
+Manage agent skills.
+
+```bash
+codebase skills install   # install bundled skills
+```
+
+---
+
+## Configuration
+
+Create `.codebase.yml` in your project root:
+
+```yaml
+# .codebase.yml
+project: my-project-slug   # Emergent project slug
+server: https://memory.emergent-company.ai   # Memory server URL (optional)
+```
+
+Auth via environment variable or config file:
+
+```bash
+export MEMORY_API_KEY=your-api-key
+# or configure ~/.memory/config.yaml
+```
+
+---
+
+## Blueprint: code-structure template pack
+
+### Object types (21 across 6 layers)
 
 | Layer | Types |
 |-------|-------|
@@ -330,20 +496,54 @@ This lets you answer: "If I change this endpoint, what UI surfaces are affected?
 
 ---
 
-## Installation
+## Tools
+
+### `graph-to-swagger`
+
+Reconstructs an OpenAPI 2.0 (Swagger) spec from the knowledge graph. Reads `APIContract`, `APIEndpoint`, and `DataModel` objects and emits a valid `swagger.json`. Achieves 100% round-trip fidelity when the graph was populated with full OpenAPI data (`summary`, `tags`, `parameters`, `responses`, `openapi_schema`, `swagger_name`).
+
+**Requirements:** Python 3.8+, `memory` CLI installed.
 
 ```bash
-memory blueprints https://github.com/mkucharz/code-memory-blueprint --project <project-slug>
+# Basic usage — writes swagger.json in current directory
+python3 tools/graph-to-swagger
+
+# Custom output path
+python3 tools/graph-to-swagger -o api/swagger.json
+
+# Diff against an existing swagger file
+python3 tools/graph-to-swagger --diff apps/server/docs/swagger/swagger.json
+
+# Only include endpoints wired to the contract via grouped_in
+python3 tools/graph-to-swagger --filter-contract -o contract-only.json
+
+# Point at a specific Memory server
+python3 tools/graph-to-swagger --server https://api.example.com -o swagger.json
+
+# Compact output (no indent)
+python3 tools/graph-to-swagger --compact -o swagger.min.json
 ```
 
-Or from a local clone:
+**Options:**
 
-```bash
-git clone https://github.com/mkucharz/code-memory-blueprint
-memory blueprints ./code-memory-blueprint --project <project-slug>
-```
+| Flag | Default | Description |
+|---|---|---|
+| `-o`, `--output` | `swagger.json` | Output file path |
+| `-c`, `--contract` | first found | APIContract key to use |
+| `--server` | `http://localhost:3012` | Memory server URL |
+| `--memory-bin` | `~/.memory/bin/memory` | Path to memory CLI binary |
+| `--filter-contract` | off | Only include endpoints wired via `grouped_in` |
+| `--diff FILE` | — | Diff output against an existing swagger file |
+| `--compact` | off | Compact JSON (no indent) |
+| `-q`, `--quiet` | off | Suppress progress output |
 
-This installs the `code-structure` template pack (21 object types, 42 relationship types) into your Emergent project. No agents or seed data are included — this is a schema-only blueprint.
+**Graph requirements** — the following properties must be populated for full fidelity:
+
+| Object | Properties needed |
+|---|---|
+| `APIContract` | `title`, `version`, `description`, `base_url` |
+| `APIEndpoint` | `path`, `method`, `summary`, `description`, `tags`, `auth_required`, `parameters`, `responses` |
+| `DataModel` | `swagger_name` (full OpenAPI key, e.g. `domain_agents.AgentDTO`), `openapi_schema` |
 
 ---
 
@@ -360,9 +560,13 @@ This installs the `code-structure` template pack (21 object types, 42 relationsh
 ## Directory layout
 
 ```
-code-memory-blueprint/
+codebase/
+  cmd/
+    codebase/          # CLI source (Go)
   packs/
-    code-structure.yaml    # 21 object types, 42 relationship types
+    code-structure.yaml    # object types and relationship types
+  tools/
+    graph-to-swagger       # reconstruct OpenAPI spec from graph
   README.md
   project.yaml
 ```
@@ -371,8 +575,9 @@ code-memory-blueprint/
 
 ## Prerequisites
 
-- An Emergent project with the `memory` CLI installed
-- No agents, no seed data, no external MCP servers required
+- An [Emergent](https://emergent.company) account with API key
+- `memory` CLI installed
+- No agents, no seed data, no external MCP servers required for the blueprint
 
 ---
 

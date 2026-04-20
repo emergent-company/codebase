@@ -6,7 +6,7 @@ import (
 	"os"
 
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
-	"github.com/mkucharz/code-memory-blueprint/cmd/codebase/internal/config"
+	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
 	"github.com/spf13/cobra"
 )
 

@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+"""
+graph-to-swagger — Reconstruct an OpenAPI 2.0 (Swagger) spec from a Memory knowledge graph.
+
+Reads APIContract, APIEndpoint, and DataModel objects from the active Memory project
+and emits a valid swagger.json. Achieves 100% round-trip fidelity when the graph was
+populated with the full OpenAPI backfill (summary, tags, parameters, responses,
+openapi_schema, swagger_name).
+
+Usage:
+    graph-to-swagger [OPTIONS]
+
+Options:
+    -o, --output FILE       Output file path (default: swagger.json)
+    -c, --contract KEY      APIContract key to use (default: first found)
+    --server URL            Memory server URL (default: http://localhost:3012)
+    --memory-bin PATH       Path to memory CLI binary (default: ~/.memory/bin/memory)
+    --pretty                Pretty-print JSON with 2-space indent (default: true)
+    --compact               Compact JSON output (no indent)
+    --filter-contract       Only include endpoints wired to the contract via grouped_in
+    --diff FILE             Diff output against an existing swagger file and report
+    -q, --quiet             Suppress progress output
+    -h, --help              Show this help message
+
+Examples:
+    graph-to-swagger
+    graph-to-swagger -o api/swagger.json
+    graph-to-swagger --diff apps/server/docs/swagger/swagger.json
+    graph-to-swagger --contract contract-memory-api-v1 -o /tmp/out.json
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+
+
+# ── CLI args ─────────────────────────────────────────────────────────────────
+
+def parse_args():
+    p = argparse.ArgumentParser(
+        prog="graph-to-swagger",
+        description="Reconstruct an OpenAPI 2.0 (Swagger) spec from a Memory knowledge graph.",
+        add_help=False,
+    )
+    p.add_argument("-o", "--output", default="swagger.json", metavar="FILE",
+                   help="Output file path (default: swagger.json)")
+    p.add_argument("-c", "--contract", default=None, metavar="KEY",
+                   help="APIContract key to use (default: first found)")
+    p.add_argument("--server", default=None, metavar="URL",
+                   help="Memory server URL (default: http://localhost:3012)")
+    p.add_argument("--memory-bin", default=None, metavar="PATH",
+                   help="Path to memory CLI binary (default: ~/.memory/bin/memory)")
+    p.add_argument("--pretty", action="store_true", default=True,
+                   help="Pretty-print JSON (default)")
+    p.add_argument("--compact", action="store_true", default=False,
+                   help="Compact JSON output")
+    p.add_argument("--filter-contract", action="store_true", default=False,
+                   help="Only include endpoints wired to the contract via grouped_in")
+    p.add_argument("--diff", default=None, metavar="FILE",
+                   help="Diff output against an existing swagger file")
+    p.add_argument("-q", "--quiet", action="store_true", default=False,
+                   help="Suppress progress output")
+    p.add_argument("-h", "--help", action="help",
+                   help="Show this help message")
+    return p.parse_args()
+
+
+# ── Memory CLI wrapper ────────────────────────────────────────────────────────
+
+class MemoryClient:
+    def __init__(self, binary, server=None, quiet=False):
+        self.binary = binary
+        self.server = server
+        self.quiet = quiet
+
+    def _run(self, args):
+        cmd = [self.binary]
+        if self.server:
+            cmd += ["--server", self.server]
+        cmd += args
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"  ERROR: {r.stderr.strip()[:400]}", file=sys.stderr)
+            return None
+        return r.stdout
+
+    def list_objects(self, obj_type, limit=1000):
+        out = self._run(["graph", "objects", "list",
+                         "--type", obj_type,
+                         "--limit", str(limit),
+                         "--output", "json"])
+        if not out:
+            return []
+        return json.loads(out).get("items", [])
+
+    def list_relationships(self, rel_type, limit=5000):
+        out = self._run(["graph", "relationships", "list",
+                         "--type", rel_type,
+                         "--limit", str(limit),
+                         "--output", "json"])
+        if not out:
+            return []
+        d = json.loads(out)
+        return d.get("items", d) if isinstance(d, dict) else d
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def graph_path_to_swagger(path):
+    """Convert :param → {param} style."""
+    return re.sub(r":([a-zA-Z_][a-zA-Z0-9_]*)", r"{\1}", path)
+
+
+def parse_json_prop(value):
+    """Parse a property that may be a JSON string or already parsed."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return None
+    return value
+
+
+def log(msg, quiet):
+    if not quiet:
+        print(msg)
+
+
+# ── Build swagger ─────────────────────────────────────────────────────────────
+
+def build_swagger(client, contract_key=None, filter_contract=False, quiet=False):
+    # 1. Load APIContract
+    log("Loading APIContract...", quiet)
+    contracts = client.list_objects("APIContract")
+    if not contracts:
+        print("ERROR: No APIContract objects found in graph.", file=sys.stderr)
+        sys.exit(1)
+
+    if contract_key:
+        contract = next((c for c in contracts if c.get("key") == contract_key), None)
+        if not contract:
+            print(f"ERROR: APIContract with key '{contract_key}' not found.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        contract = contracts[0]
+
+    cp = contract.get("properties", {})
+    log(f"  {cp.get('title', 'Unknown')} v{cp.get('version', '?')}", quiet)
+
+    # 2. Load endpoints
+    log("Loading APIEndpoints...", quiet)
+    all_endpoints = client.list_objects("APIEndpoint", limit=2000)
+
+    if filter_contract:
+        # Only endpoints wired to this contract via grouped_in
+        log("  Filtering by grouped_in relationship...", quiet)
+        rels = client.list_relationships("grouped_in", limit=5000)
+        contract_id = contract["id"]
+        wired_ids = {r["from"] for r in rels if r.get("to") == contract_id}
+        endpoints = [e for e in all_endpoints if e["id"] in wired_ids]
+        log(f"  {len(endpoints)}/{len(all_endpoints)} endpoints wired to contract", quiet)
+    else:
+        endpoints = all_endpoints
+        log(f"  {len(endpoints)} endpoints", quiet)
+
+    # 3. Load DataModels
+    log("Loading DataModels...", quiet)
+    datamodels = client.list_objects("DataModel", limit=2000)
+    log(f"  {len(datamodels)} data models", quiet)
+
+    # 4. Build paths
+    log("Building paths...", quiet)
+    paths = {}
+    for ep in endpoints:
+        props = ep.get("properties", {})
+        raw_path = props.get("path", "")
+        method = (props.get("method") or "get").lower()
+        if not raw_path:
+            continue
+
+        swagger_path = graph_path_to_swagger(raw_path)
+        op = {}
+
+        # Auth
+        if props.get("auth_required", False):
+            op["security"] = [{"bearerAuth": []}]
+
+        # Metadata
+        if props.get("description"):
+            op["description"] = props["description"]
+        if props.get("summary"):
+            op["summary"] = props["summary"]
+
+        tags = parse_json_prop(props.get("tags"))
+        if tags:
+            op["tags"] = tags if isinstance(tags, list) else [tags]
+
+        op["consumes"] = ["application/json"]
+        op["produces"] = ["application/json"]
+
+        # Parameters
+        params = parse_json_prop(props.get("parameters"))
+        if params:
+            op["parameters"] = params
+
+        # Responses — use stored value if present (even if empty {}), fallback only if missing
+        raw_responses = props.get("responses")
+        if raw_responses is not None:
+            responses = parse_json_prop(raw_responses)
+            op["responses"] = responses if responses is not None else {}
+        else:
+            op["responses"] = {"200": {"description": "OK"}}
+
+        if swagger_path not in paths:
+            paths[swagger_path] = {}
+        paths[swagger_path][method] = op
+
+    # 5. Build definitions
+    log("Building definitions...", quiet)
+    definitions = {}
+    for dm in datamodels:
+        props = dm.get("properties", {})
+        # swagger_name holds the full domain_X.TypeName key; fall back to name
+        name = props.get("swagger_name") or props.get("name") or ""
+        if not name:
+            continue
+        schema = parse_json_prop(props.get("openapi_schema"))
+        if schema:
+            definitions[name] = schema
+
+    # 6. Assemble
+    host = cp.get("base_url", "localhost:3012")
+    host = host.replace("https://", "").replace("http://", "").rstrip("/")
+
+    swagger = {
+        "swagger": "2.0",
+        "info": {
+            "description": cp.get("description", ""),
+            "title": cp.get("title", "API"),
+            "version": cp.get("version", ""),
+        },
+        "host": host,
+        "basePath": "/",
+        "schemes": ["http", "https"],
+        "paths": dict(sorted(paths.items())),
+        "definitions": dict(sorted(definitions.items())),
+        "securityDefinitions": {
+            "bearerAuth": {
+                "type": "apiKey",
+                "name": "Authorization",
+                "in": "header",
+            }
+        },
+    }
+
+    return swagger, len(paths), len(definitions)
+
+
+# ── Diff ──────────────────────────────────────────────────────────────────────
+
+def diff_swagger(generated, reference_path):
+    with open(reference_path) as f:
+        ref = json.load(f)
+
+    gen_paths = set(generated.get("paths", {}).keys())
+    ref_paths = set(ref.get("paths", {}).keys())
+    gen_defs  = set(generated.get("definitions", {}).keys())
+    ref_defs  = set(ref.get("definitions", {}).keys())
+
+    missing_paths = ref_paths - gen_paths
+    extra_paths   = gen_paths - ref_paths
+    missing_defs  = ref_defs - gen_defs
+    extra_defs    = gen_defs - ref_defs
+
+    # Field-level diffs on shared paths
+    field_diffs = []
+    for path in sorted(ref_paths & gen_paths):
+        for method, ref_op in ref["paths"][path].items():
+            gen_op = generated["paths"][path].get(method)
+            if gen_op is None:
+                field_diffs.append((path, method, "MISSING_METHOD", None, None))
+                continue
+            for field in ["summary", "description", "tags"]:
+                rv, gv = ref_op.get(field), gen_op.get(field)
+                if rv != gv:
+                    field_diffs.append((path, method, field, rv, gv))
+            # auth
+            if bool(ref_op.get("security")) != bool(gen_op.get("security")):
+                field_diffs.append((path, method, "security",
+                                    bool(ref_op.get("security")),
+                                    bool(gen_op.get("security"))))
+            # response codes
+            rr = set(ref_op.get("responses", {}).keys())
+            gr = set(gen_op.get("responses", {}).keys())
+            if rr != gr:
+                field_diffs.append((path, method, "response_codes",
+                                    sorted(rr), sorted(gr)))
+
+    # Definition content diffs
+    def_diffs = []
+    for name in sorted(ref_defs & gen_defs):
+        rv = json.dumps(ref["definitions"][name], sort_keys=True)
+        gv = json.dumps(generated["definitions"][name], sort_keys=True)
+        if rv != gv:
+            def_diffs.append(name)
+
+    print("\n=== DIFF REPORT ===")
+    print(f"Reference: {reference_path}")
+    print(f"\nPaths:       ref={len(ref_paths)}  generated={len(gen_paths)}")
+    print(f"  Missing:   {len(missing_paths)}")
+    print(f"  Extra:     {len(extra_paths)}")
+    print(f"  Field diffs on shared paths: {len(field_diffs)}")
+    print(f"\nDefinitions: ref={len(ref_defs)}  generated={len(gen_defs)}")
+    print(f"  Missing:   {len(missing_defs)}")
+    print(f"  Extra:     {len(extra_defs)}")
+    print(f"  Content diffs: {len(def_diffs)}")
+
+    if missing_paths:
+        print(f"\nMissing paths ({len(missing_paths)}):")
+        for p in sorted(missing_paths):
+            print(f"  - {p}")
+
+    if extra_paths:
+        print(f"\nExtra paths (graph-only, {len(extra_paths)}):")
+        for p in sorted(extra_paths):
+            print(f"  + {p}")
+
+    if field_diffs:
+        print(f"\nField diffs:")
+        from collections import Counter
+        by_field = Counter(d[2] for d in field_diffs)
+        for field, count in by_field.most_common():
+            print(f"  {field}: {count}")
+        print("\nSamples (first 3 per field):")
+        counts = {}
+        for path, method, field, rv, gv in field_diffs:
+            counts.setdefault(field, 0)
+            if counts[field] < 3:
+                print(f"  [{field}] {method.upper()} {path}")
+                print(f"    ref: {repr(str(rv)[:100])}")
+                print(f"    gen: {repr(str(gv)[:100])}")
+                counts[field] += 1
+
+    if def_diffs:
+        print(f"\nDefinition content diffs ({len(def_diffs)}):")
+        for name in def_diffs[:10]:
+            print(f"  {name}")
+        if len(def_diffs) > 10:
+            print(f"  ... and {len(def_diffs)-10} more")
+
+    total_issues = len(missing_paths) + len(field_diffs) + len(missing_defs) + len(def_diffs)
+    print(f"\n{'✓ Perfect fidelity' if total_issues == 0 else f'✗ {total_issues} issue(s) found'}")
+    if extra_paths:
+        print(f"  (+ {len(extra_paths)} graph-only paths not in reference — expected)")
+
+    return total_issues
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    args = parse_args()
+
+    memory_bin = args.memory_bin or os.path.expanduser("~/.memory/bin/memory")
+    if not os.path.isfile(memory_bin):
+        print(f"ERROR: memory CLI not found at {memory_bin}", file=sys.stderr)
+        print("Install with: task cli:install  (or pass --memory-bin PATH)", file=sys.stderr)
+        sys.exit(1)
+
+    client = MemoryClient(binary=memory_bin, server=args.server, quiet=args.quiet)
+
+    swagger, n_paths, n_defs = build_swagger(
+        client,
+        contract_key=args.contract,
+        filter_contract=args.filter_contract,
+        quiet=args.quiet,
+    )
+
+    indent = None if args.compact else 2
+    output = json.dumps(swagger, indent=indent)
+
+    out_path = args.output
+    with open(out_path, "w") as f:
+        f.write(output)
+
+    log(f"\nWritten to {out_path}", args.quiet)
+    log(f"  paths:       {n_paths}", args.quiet)
+    log(f"  definitions: {n_defs}", args.quiet)
+
+    if args.diff:
+        issues = diff_swagger(swagger, args.diff)
+        sys.exit(1 if issues > 0 else 0)
+
+
+if __name__ == "__main__":
+    main()

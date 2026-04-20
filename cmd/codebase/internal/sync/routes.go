@@ -14,8 +14,8 @@ import (
 	"time"
 
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
-	"github.com/mkucharz/code-memory-blueprint/cmd/codebase/internal/config"
-	"github.com/mkucharz/code-memory-blueprint/cmd/codebase/internal/extractors"
+	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
+	"github.com/mkucharz/codebase/cmd/codebase/internal/extractors"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
 	"github.com/spf13/cobra"

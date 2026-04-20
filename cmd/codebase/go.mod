@@ -1,4 +1,4 @@
-module github.com/mkucharz/code-memory-blueprint/cmd/codebase
+module github.com/mkucharz/codebase/cmd/codebase
 
 go 1.24
 

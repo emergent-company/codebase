@@ -18,7 +18,7 @@ on:
 env:
   GO_VERSION: '1.24'
   WORKING_DIR: cmd/codebase
-  MODULE: github.com/mkucharz/code-memory-blueprint/cmd/codebase
+  MODULE: github.com/mkucharz/codebase/cmd/codebase
 
 jobs:
   lint:
