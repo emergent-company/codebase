@@ -1,61 +1,23 @@
-package analyzecmd
+package analyze
 
 import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/emergent-company/emergent.memory/apps/server/pkg/sdk"
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/graph"
-	cbgraph "github.com/emergent-company/codebase/graph"
-	"github.com/spf13/cobra"
+	"github.com/emergent-company/codebase/graph"
+	"github.com/emergent-company/codebase/schema"
 )
 
-func newScenariosCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
-	var (
-		flagDomain    string
-		flagScenario  string
-		flagContext   string
-		flagShowEmpty bool
-		flagMinSteps  int
-		flagNoActOnly bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "scenarios",
-		Short: "Map scenarios to contexts and actions",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.New(*flagProjectID, *flagBranch)
-			if err != nil {
-				return err
-			}
-			return runScenarios(cfg.SDK, flagDomain, flagScenario, flagContext, flagShowEmpty, flagMinSteps, flagNoActOnly, *flagFormat)
-		},
-	}
-
-	cmd.Flags().StringVar(&flagDomain, "domain", "", "Filter by domain slug")
-	cmd.Flags().StringVar(&flagScenario, "scenario", "", "Filter to one scenario by key")
-	cmd.Flags().StringVar(&flagContext, "context", "", "Filter to scenarios using a specific context key")
-	cmd.Flags().BoolVar(&flagShowEmpty, "show-empty", false, "Include steps with no action")
-	cmd.Flags().IntVar(&flagMinSteps, "min-steps", 0, "Only show scenarios with >= N steps")
-	cmd.Flags().BoolVar(&flagNoActOnly, "no-action-only", false, "Only show scenarios where ALL steps have no action")
-
-	return cmd
-}
-
-func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilter string, showEmpty bool, minSteps int, noActOnly bool, format string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-
-	fmt.Fprintln(os.Stderr, "→ Fetching graph data...")
+func RunScenarios(ctx context.Context, gc graph.GraphClient, w io.Writer, domainFilter, scenarioFilter, contextFilter string, showEmpty bool, minSteps int, noActOnly bool, format string) error {
+	fmt.Fprintln(w, "→ Fetching graph data...")
 
 	var (
 		scenarios []*sdkgraph.GraphObject
@@ -82,14 +44,13 @@ func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilte
 		}()
 	}
 
-	adapter := graph.NewSDKAdapter(client.Graph)
-	fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "Scenario"); scenarios = r; return e })
-	fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "ScenarioStep"); steps = r; return e })
-	fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "Context"); contexts = r; return e })
-	fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "Action"); actions = r; return e })
-	fetch(func() error { r, e := cbgraph.ListAllRels(ctx, adapter, "has_step"); hasStep = r; return e })
-	fetch(func() error { r, e := cbgraph.ListAllRels(ctx, adapter, "occurs_in"); occursIn = r; return e })
-	fetch(func() error { r, e := cbgraph.ListAllRels(ctx, adapter, "has_action"); hasAction = r; return e })
+	fetch(func() error { r, e := graph.ListAll(ctx, gc, schema.TypeScenario); scenarios = r; return e })
+	fetch(func() error { r, e := graph.ListAll(ctx, gc, schema.TypeScenarioStep); steps = r; return e })
+	fetch(func() error { r, e := graph.ListAll(ctx, gc, schema.TypeContext); contexts = r; return e })
+	fetch(func() error { r, e := graph.ListAll(ctx, gc, schema.TypeAction); actions = r; return e })
+	fetch(func() error { r, e := graph.ListAllRels(ctx, gc, schema.RelHasStep); hasStep = r; return e })
+	fetch(func() error { r, e := graph.ListAllRels(ctx, gc, schema.RelOccursIn); occursIn = r; return e })
+	fetch(func() error { r, e := graph.ListAllRels(ctx, gc, schema.RelHasAction); hasAction = r; return e })
 
 	wg.Wait()
 	if fetchErr != nil {
@@ -126,7 +87,7 @@ func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilte
 	if contextFilter != "" {
 		contextFilterIDs = map[string]bool{}
 		for _, c := range contexts {
-			if cbgraph.DerefKey(c.Key) == contextFilter {
+			if graph.DerefKey(c.Key) == contextFilter {
 				for _, r := range occursIn {
 					if r.DstID == c.EntityID {
 						for _, r2 := range hasStep {
@@ -142,11 +103,9 @@ func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilte
 	}
 
 	var views []ScenarioView
-	usedContexts := map[string]bool{}
-
 	for _, sc := range scenarios {
-		scKey := cbgraph.DerefKey(sc.Key)
-		scDomain := cbgraph.StrProp(sc, "domain")
+		scKey := graph.DerefKey(sc.Key)
+		scDomain := graph.StrProp(sc, "domain")
 		if scDomain == "" {
 			scDomain = domainFromKey(scKey)
 		}
@@ -176,20 +135,19 @@ func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilte
 			ctxKey, ctxName, ctxType := "", "", ""
 			if ctxID != "" {
 				if c, ok := ctxByID[ctxID]; ok {
-					ctxKey, ctxName, ctxType = cbgraph.DerefKey(c.Key), cbgraph.StrProp(c, "name"), cbgraph.StrProp(c, "context_type")
-					usedContexts[ctxID] = true
+					ctxKey, ctxName, ctxType = graph.DerefKey(c.Key), graph.StrProp(c, "name"), graph.StrProp(c, "context_type")
 				}
 			}
 			actIDs := stepToActions[stepID]
 			var actLabels []string
 			for _, aid := range actIDs {
 				if act, ok := actByID[aid]; ok {
-					lbl := cbgraph.StrProp(act, "label")
+					lbl := graph.StrProp(act, "label")
 					if lbl == "" {
-						lbl = cbgraph.StrProp(act, "name")
+						lbl = graph.StrProp(act, "name")
 					}
 					if lbl == "" {
-						lbl = cbgraph.DerefKey(act.Key)
+						lbl = graph.DerefKey(act.Key)
 					}
 					actLabels = append(actLabels, lbl)
 				}
@@ -199,7 +157,7 @@ func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilte
 				continue
 			}
 			stepViews = append(stepViews, StepView{
-				StepKey: cbgraph.DerefKey(step.Key), StepName: cbgraph.StrProp(step, "name"), StepOrder: int(cbgraph.AnyPropInt(step, "order")),
+				StepKey: graph.DerefKey(step.Key), StepName: graph.StrProp(step, "name"), StepOrder: GetPropInt(step, "order"),
 				ContextKey: ctxKey, ContextName: ctxName, ContextType: ctxType, Actions: actLabels,
 			})
 		}
@@ -224,7 +182,7 @@ func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilte
 		}
 
 		views = append(views, ScenarioView{
-			Key: scKey, Name: cbgraph.StrProp(sc, "name"), Domain: scDomain, Status: cbgraph.DerefKey(sc.Status), Steps: stepViews,
+			Key: scKey, Name: graph.StrProp(sc, "name"), Domain: scDomain, Status: graph.DerefKey(sc.Status), Steps: stepViews,
 		})
 	}
 
@@ -242,13 +200,13 @@ func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilte
 
 	switch format {
 	case "json":
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(report)
 	case "csv":
-		return printScenariosCSV(report)
+		return printScenariosCSV(w, report)
 	default:
-		printScenariosTree(report)
+		printScenariosTree(w, report)
 	}
 	return nil
 }
@@ -288,15 +246,15 @@ func domainFromKey(key string) string {
 	return rest[:idx]
 }
 
-func printScenariosTree(r ScenarioReport) {
-	fmt.Printf("\n╔══ SCENARIO CONTEXT MAP  %s\n", r.Generated)
+func printScenariosTree(w io.Writer, r ScenarioReport) {
+	fmt.Fprintf(w, "\n╔══ SCENARIO CONTEXT MAP  %s\n", r.Generated)
 	lastDomain := ""
 	for _, sc := range r.Scenarios {
 		if sc.Domain != lastDomain {
-			fmt.Printf("\n══ %s\n", sc.Domain)
+			fmt.Fprintf(w, "\n══ %s\n", sc.Domain)
 			lastDomain = sc.Domain
 		}
-		fmt.Printf("  ┌─ %s  [%d steps]\n", sc.Name, len(sc.Steps))
+		fmt.Fprintf(w, "  ┌─ %s  [%d steps]\n", sc.Name, len(sc.Steps))
 		for i, sv := range sc.Steps {
 			connector := "├"
 			if i == len(sc.Steps)-1 {
@@ -307,22 +265,31 @@ func printScenariosTree(r ScenarioReport) {
 				ctxLabel = "(no context)"
 			}
 			if len(sv.Actions) == 0 {
-				fmt.Printf("  %s─ step %d  ctx:%-30s  (no action)\n", connector, sv.StepOrder, ctxLabel)
+				fmt.Fprintf(w, "  %s─ step %d  ctx:%-30s  (no action)\n", connector, sv.StepOrder, ctxLabel)
 			} else {
-				fmt.Printf("  %s─ step %d  ctx:%-30s  → %s\n", connector, sv.StepOrder, ctxLabel, sv.Actions[0])
+				fmt.Fprintf(w, "  %s─ step %d  ctx:%-30s  → %s\n", connector, sv.StepOrder, ctxLabel, sv.Actions[0])
 			}
 		}
 	}
 }
 
-func printScenariosCSV(r ScenarioReport) error {
-	w := csv.NewWriter(os.Stdout)
-	_ = w.Write([]string{"scenario_key", "scenario_name", "domain", "status", "step_key", "step_order", "context_key", "context_name", "context_type", "actions"})
+func printScenariosCSV(w io.Writer, r ScenarioReport) error {
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"scenario_key", "scenario_name", "domain", "status", "step_key", "step_order", "context_key", "context_name", "context_type", "actions"})
 	for _, sc := range r.Scenarios {
 		for _, sv := range sc.Steps {
-			_ = w.Write([]string{sc.Key, sc.Name, sc.Domain, sc.Status, sv.StepKey, fmt.Sprintf("%d", sv.StepOrder), sv.ContextKey, sv.ContextName, sv.ContextType, strings.Join(sv.Actions, "|")})
+			_ = cw.Write([]string{sc.Key, sc.Name, sc.Domain, sc.Status, sv.StepKey, fmt.Sprintf("%d", sv.StepOrder), sv.ContextKey, sv.ContextName, sv.ContextType, strings.Join(sv.Actions, "|")})
 		}
 	}
-	w.Flush()
+	cw.Flush()
 	return nil
+}
+
+func GetPropInt(obj *sdkgraph.GraphObject, key string) int {
+	if v, ok := obj.Properties[key]; ok {
+		if f, ok := v.(float64); ok {
+			return int(f)
+		}
+	}
+	return 0
 }

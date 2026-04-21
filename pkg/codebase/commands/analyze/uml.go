@@ -1,60 +1,28 @@
-package analyzecmd
+package analyze
 
 import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/emergent-company/emergent.memory/apps/server/pkg/sdk"
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/graph"
-	cbgraph "github.com/emergent-company/codebase/graph"
-	"github.com/spf13/cobra"
+	"github.com/emergent-company/codebase/graph"
+	"github.com/emergent-company/codebase/schema"
 )
 
-func newUMLCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
-	var (
-		flagDomain   string
-		flagSchema   string
-		flagNoFields bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "uml",
-		Short: "Generate UML diagrams (PlantUML or Mermaid)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.New(*flagProjectID, *flagBranch)
-			if err != nil {
-				return err
-			}
-			return runUML(cfg.SDK, flagDomain, flagSchema, flagNoFields, *flagFormat)
-		},
-	}
-
-	cmd.Flags().StringVar(&flagDomain, "domain", "", "Filter to entities from one domain")
-	cmd.Flags().StringVar(&flagSchema, "schema", "plantuml", "Diagram schema (plantuml|mermaid)")
-	cmd.Flags().BoolVar(&flagNoFields, "no-fields", false, "Omit field details")
-
-	return cmd
-}
-
-func runUML(client *sdk.Client, domain, schemaType string, noFields bool, format string) error {
-	ctx := context.Background()
-	data, err := fetchUMLData(ctx, client)
+func RunUML(ctx context.Context, gc graph.GraphClient, w io.Writer, domain, schemaType string, noFields bool, format string) error {
+	data, err := fetchUMLData(ctx, gc)
 	if err != nil {
 		return err
 	}
 
-	var out io.Writer = os.Stdout
 	if schemaType == "mermaid" {
-		return renderMermaid(out, data, domain, noFields)
+		return renderMermaid(w, data, domain, noFields)
 	}
-	return renderPlantUML(out, data, domain, noFields)
+	return renderPlantUML(w, data, domain, noFields)
 }
 
 type UMLData struct {
@@ -64,7 +32,7 @@ type UMLData struct {
 	References []*sdkgraph.GraphRelationship
 }
 
-func fetchUMLData(ctx context.Context, client *sdk.Client) (*UMLData, error) {
+func fetchUMLData(ctx context.Context, gc graph.GraphClient) (*UMLData, error) {
 	data := &UMLData{}
 	var wg sync.WaitGroup
 	var errs []error
@@ -82,16 +50,15 @@ func fetchUMLData(ctx context.Context, client *sdk.Client) (*UMLData, error) {
 		}()
 	}
 
-	adapter := graph.NewSDKAdapter(client.Graph)
-	fetch(func() error { items, err := cbgraph.ListAll(ctx, adapter, "Entity"); data.Entities = items; return err })
-	fetch(func() error { items, err := cbgraph.ListAll(ctx, adapter, "Field"); data.Fields = items; return err })
+	fetch(func() error { items, err := graph.ListAll(ctx, gc, schema.TypeEntity); data.Entities = items; return err })
+	fetch(func() error { items, err := graph.ListAll(ctx, gc, schema.TypeField); data.Fields = items; return err })
 	fetch(func() error {
-		items, err := cbgraph.ListAllRels(ctx, adapter, "has_field")
+		items, err := graph.ListAllRels(ctx, gc, schema.RelHasField)
 		data.HasField = items
 		return err
 	})
 	fetch(func() error {
-		items, err := cbgraph.ListAllRels(ctx, adapter, "references")
+		items, err := graph.ListAllRels(ctx, gc, schema.RelReferences)
 		data.References = items
 		return err
 	})
@@ -129,11 +96,11 @@ func renderPlantUML(w io.Writer, data *UMLData, domainFilter string, noFields bo
 
 	schemas := make(map[string][]*sdkgraph.GraphObject)
 	for _, e := range data.Entities {
-		domain := cbgraph.StrProp(e, "domain")
+		domain := graph.StrProp(e, "domain")
 		if domainFilter != "" && domain != domainFilter {
 			continue
 		}
-		schema := cbgraph.StrProp(e, "db_schema")
+		schema := graph.StrProp(e, "db_schema")
 		schemas[schema] = append(schemas[schema], e)
 	}
 
@@ -146,13 +113,13 @@ func renderPlantUML(w io.Writer, data *UMLData, domainFilter string, noFields bo
 	for _, s := range schemaNames {
 		fmt.Fprintf(w, "\npackage \"%s\" {\n", s)
 		ents := schemas[s]
-		sort.Slice(ents, func(i, j int) bool { return cbgraph.StrProp(ents[i], "name") < cbgraph.StrProp(ents[j], "name") })
+		sort.Slice(ents, func(i, j int) bool { return graph.StrProp(ents[i], "name") < graph.StrProp(ents[j], "name") })
 		for _, e := range ents {
-			alias := strings.ReplaceAll(strings.TrimPrefix(cbgraph.DerefKey(e.Key), "entity-"), "-", "_")
-			fmt.Fprintf(w, "  class \"%s\" as entity_%s {\n", cbgraph.StrProp(e, "name"), alias)
+			alias := strings.ReplaceAll(strings.TrimPrefix(graph.DerefKey(e.Key), "entity-"), "-", "_")
+			fmt.Fprintf(w, "  class \"%s\" as entity_%s {\n", graph.StrProp(e, "name"), alias)
 			if !noFields {
 				fields := entityFields[e.EntityID]
-				sort.Slice(fields, func(i, j int) bool { return int(cbgraph.AnyPropInt(fields[i], "ordinal")) < int(cbgraph.AnyPropInt(fields[j], "ordinal")) })
+				sort.Slice(fields, func(i, j int) bool { return GetPropInt(fields[i], "ordinal") < GetPropInt(fields[j], "ordinal") })
 				for _, f := range fields {
 					renderPlantUMLField(w, f)
 				}
@@ -168,11 +135,11 @@ func renderPlantUML(w io.Writer, data *UMLData, domainFilter string, noFields bo
 		if !ok1 || !ok2 {
 			continue
 		}
-		if (domainFilter != "" && cbgraph.StrProp(src, "domain") != domainFilter) || (domainFilter != "" && cbgraph.StrProp(dst, "domain") != domainFilter) {
+		if (domainFilter != "" && graph.StrProp(src, "domain") != domainFilter) || (domainFilter != "" && graph.StrProp(dst, "domain") != domainFilter) {
 			continue
 		}
-		srcAlias := strings.ReplaceAll(strings.TrimPrefix(cbgraph.DerefKey(src.Key), "entity-"), "-", "_")
-		dstAlias := strings.ReplaceAll(strings.TrimPrefix(cbgraph.DerefKey(dst.Key), "entity-"), "-", "_")
+		srcAlias := strings.ReplaceAll(strings.TrimPrefix(graph.DerefKey(src.Key), "entity-"), "-", "_")
+		dstAlias := strings.ReplaceAll(strings.TrimPrefix(graph.DerefKey(dst.Key), "entity-"), "-", "_")
 		label := ""
 		if v, ok := rel.Properties["via_field"]; ok {
 			label = fmt.Sprintf(" : %v", v)
@@ -185,14 +152,14 @@ func renderPlantUML(w io.Writer, data *UMLData, domainFilter string, noFields bo
 }
 
 func renderPlantUMLField(w io.Writer, f *sdkgraph.GraphObject) {
-	name := cbgraph.StrProp(f, "name")
-	typ := cbgraph.StrProp(f, "db_type")
+	name := graph.StrProp(f, "name")
+	typ := graph.StrProp(f, "db_type")
 	if typ == "" {
-		typ = inferDBType(cbgraph.StrProp(f, "go_type"))
+		typ = inferDBType(graph.StrProp(f, "go_type"))
 	}
 	typ = strings.ReplaceAll(typ, ",", ";")
 	suffix := ""
-	if cbgraph.AnyPropBool(f, "is_pk") {
+	if GetPropBool(f, "is_pk") {
 		suffix = " <<PK>>"
 	}
 	fmt.Fprintf(w, "    + %s : %s%s\n", name, typ, suffix)
@@ -216,23 +183,23 @@ func renderMermaid(w io.Writer, data *UMLData, domainFilter string, noFields boo
 	}
 
 	for _, e := range data.Entities {
-		if domainFilter != "" && cbgraph.StrProp(e, "domain") != domainFilter {
+		if domainFilter != "" && graph.StrProp(e, "domain") != domainFilter {
 			continue
 		}
-		tableName := cbgraph.StrProp(e, "table")
+		tableName := graph.StrProp(e, "table")
 		if tableName == "" {
-			tableName = strings.ReplaceAll(cbgraph.DerefKey(e.Key), "-", "_")
+			tableName = strings.ReplaceAll(graph.DerefKey(e.Key), "-", "_")
 		}
 		fmt.Fprintf(w, "    %s {\n", tableName)
 		if !noFields {
 			fields := entityFields[e.EntityID]
-			sort.Slice(fields, func(i, j int) bool { return int(cbgraph.AnyPropInt(fields[i], "ordinal")) < int(cbgraph.AnyPropInt(fields[j], "ordinal")) })
+			sort.Slice(fields, func(i, j int) bool { return GetPropInt(fields[i], "ordinal") < GetPropInt(fields[j], "ordinal") })
 			for _, f := range fields {
-				typ := cbgraph.StrProp(f, "db_type")
+				typ := graph.StrProp(f, "db_type")
 				if typ == "" {
-					typ = inferDBType(cbgraph.StrProp(f, "go_type"))
+					typ = inferDBType(graph.StrProp(f, "go_type"))
 				}
-				fmt.Fprintf(w, "        %s %s\n", typ, cbgraph.StrProp(f, "name"))
+				fmt.Fprintf(w, "        %s %s\n", typ, graph.StrProp(f, "name"))
 			}
 		}
 		fmt.Fprintln(w, "    }")
@@ -244,16 +211,16 @@ func renderMermaid(w io.Writer, data *UMLData, domainFilter string, noFields boo
 		if !ok1 || !ok2 {
 			continue
 		}
-		if (domainFilter != "" && cbgraph.StrProp(src, "domain") != domainFilter) || (domainFilter != "" && cbgraph.StrProp(dst, "domain") != domainFilter) {
+		if (domainFilter != "" && graph.StrProp(src, "domain") != domainFilter) || (domainFilter != "" && graph.StrProp(dst, "domain") != domainFilter) {
 			continue
 		}
-		srcTable := cbgraph.StrProp(src, "table")
+		srcTable := graph.StrProp(src, "table")
 		if srcTable == "" {
-			srcTable = strings.ReplaceAll(cbgraph.DerefKey(src.Key), "-", "_")
+			srcTable = strings.ReplaceAll(graph.DerefKey(src.Key), "-", "_")
 		}
-		dstTable := cbgraph.StrProp(dst, "table")
+		dstTable := graph.StrProp(dst, "table")
 		if dstTable == "" {
-			dstTable = strings.ReplaceAll(cbgraph.DerefKey(dst.Key), "-", "_")
+			dstTable = strings.ReplaceAll(graph.DerefKey(dst.Key), "-", "_")
 		}
 		label := spRel(rel, "via_field")
 		fmt.Fprintf(w, "    %s }o--|| %s : \"%s\"\n", srcTable, dstTable, label)
@@ -279,7 +246,7 @@ func inferDBType(goType string) string {
 	}
 }
 
-func getPropBool(obj *sdkgraph.GraphObject, key string) bool {
+func GetPropBool(obj *sdkgraph.GraphObject, key string) bool {
 	if v, ok := obj.Properties[key]; ok {
 		if b, ok := v.(bool); ok {
 			return b
@@ -288,14 +255,6 @@ func getPropBool(obj *sdkgraph.GraphObject, key string) bool {
 	return false
 }
 
-func getPropInt(obj *sdkgraph.GraphObject, key string) int {
-	if v, ok := obj.Properties[key]; ok {
-		if f, ok := v.(float64); ok {
-			return int(f)
-		}
-	}
-	return 0
-}
 
 func spRel(r *sdkgraph.GraphRelationship, key string) string {
 	if v, ok := r.Properties[key]; ok {

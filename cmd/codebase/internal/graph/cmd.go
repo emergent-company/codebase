@@ -1,6 +1,13 @@
 package graph
 
 import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
+	cbgraph "github.com/emergent-company/codebase/commands/graph"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +47,23 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Use:   "list",
 		Short: "List objects in the graph",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			return cbgraph.List(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.ListOptions{
+				Type:    flagType,
+				Key:     flagKey,
+				All:     flagAll,
+				Limit:   flagLimit,
+				Cursor:  flagCursor,
+				Filter:  flagFilter,
+				Status:  flagStatus,
+				Count:   flagCount,
+				JSON:    flagListJSON,
+				Verbose: flagVerbose,
+			})
 		},
 	}
 	listCmd.Flags().StringVar(&flagType, "type", "", "Object type (required)")
@@ -62,7 +85,19 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Short: "Get an object by ID or key",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGet(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			input := flagKey
+			if input == "" && len(args) > 0 {
+				input = args[0]
+			}
+			if input == "" {
+				return fmt.Errorf("ID or --key is required")
+			}
+			return cbgraph.Get(context.Background(), adapter, cmd.OutOrStdout(), input)
 		},
 	}
 	getCmd.Flags().StringVar(&flagKey, "key", "", "Get by key instead of ID")
@@ -73,7 +108,19 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Use:   "create",
 		Short: "Create a new object",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCreate(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			return cbgraph.Create(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.CreateOptions{
+				Type:       flagType,
+				Key:        flagKey,
+				Properties: flagProperties,
+				Status:     flagStatus,
+				Upsert:     flagUpsert,
+				JSON:       flagCreateJSON,
+			})
 		},
 	}
 	createCmd.Flags().StringVar(&flagType, "type", "", "Object type (required)")
@@ -91,7 +138,17 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Use:   "update",
 		Short: "Update an existing object",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpdate(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			return cbgraph.Update(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.UpdateOptions{
+				ID:         flagID,
+				Key:        flagKey,
+				Properties: flagProperties,
+				Status:     flagStatus,
+			})
 		},
 	}
 	updateCmd.Flags().StringVar(&flagID, "id", "", "Object ID")
@@ -105,7 +162,17 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Use:   "relate",
 		Short: "Relate two objects",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRelate(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			return cbgraph.Relate(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.RelateOptions{
+				Type:   flagType,
+				From:   flagFrom,
+				To:     flagTo,
+				Upsert: flagUpsert,
+			})
 		},
 	}
 	relateCmd.Flags().StringVar(&flagType, "type", "", "Relationship type (required)")
@@ -123,7 +190,21 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Short: "Delete a relationship by ID or lookup",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUnrelate(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			relID := ""
+			if len(args) == 1 {
+				relID = args[0]
+			}
+			return cbgraph.Unrelate(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.UnrelateOptions{
+				RelID:   relID,
+				From:    flagFrom,
+				To:      flagTo,
+				RelType: flagRelType,
+			})
 		},
 	}
 	unrelateCmd.Flags().StringVar(&flagFrom, "from", "", "Source object ID")
@@ -139,7 +220,15 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Short: "Delete an object by ID or key",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDelete(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			if len(args) == 0 {
+				return fmt.Errorf("ID or key is required")
+			}
+			return cbgraph.Delete(context.Background(), adapter, cmd.OutOrStdout(), args[0], flagType)
 		},
 	}
 	deleteCmd.Flags().StringVar(&flagType, "type", "", "Object type hint")
@@ -151,7 +240,12 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Short: "Rename an object and migrate relationships",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRename(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			return cbgraph.Rename(context.Background(), adapter, cmd.OutOrStdout(), args[0], args[1], flagDryRun)
 		},
 	}
 	renameCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Show changes without applying")
@@ -163,7 +257,12 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Use:   "prune",
 		Short: "Delete objects with no relationships",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runPrune(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			return cbgraph.Prune(context.Background(), adapter, cmd.OutOrStdout(), flagDryRun)
 		},
 	}
 	pruneCmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Show orphans without deleting")
@@ -175,7 +274,19 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Short: "Show dependency tree for an object",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTree(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			input := ""
+			if len(args) > 0 {
+				input = args[0]
+			}
+			return cbgraph.Tree(context.Background(), adapter, cmd.OutOrStdout(), input, cbgraph.TreeOptions{
+				Type:  flagType,
+				Depth: flagDepth,
+			})
 		},
 	}
 	treeCmd.Flags().StringVar(&flagType, "type", "", "List all objects of this type")
@@ -188,7 +299,21 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 		Use:   "batch",
 		Short: "Create/relate multiple objects from JSON",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCreateBatch(cmd, args, flagProjectID, flagBranch)
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			var data []byte
+			if batchFile != "" {
+				data, err = os.ReadFile(batchFile)
+			} else {
+				data, err = io.ReadAll(os.Stdin)
+			}
+			if err != nil {
+				return err
+			}
+			return cbgraph.CreateBatch(context.Background(), adapter, cmd.OutOrStdout(), cmd.OutOrStderr(), data, batchFailFast)
 		},
 	}
 	batchCmd.Flags().StringVar(&batchFile, "file", "", "JSON file to read operations from")

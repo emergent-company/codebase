@@ -1,51 +1,26 @@
-package synccmd
+package sync
 
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/graph"
-	cbgraph "github.com/emergent-company/codebase/graph"
+	"github.com/emergent-company/codebase/graph"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
-	"github.com/spf13/cobra"
 )
 
-type middlewareOptions struct {
-	repo      string
-	dryRun    bool
-	routeGlob string
-}
-
-func newMiddlewareCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
-	opts := &middlewareOptions{}
-	cwd, _ := os.Getwd()
-
-	cmd := &cobra.Command{
-		Use:   "middleware",
-		Short: "Wire Middleware→APIEndpoint applies_to relationships + scopes",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMiddleware(opts, flagProjectID, flagBranch, flagFormat)
-		},
-	}
-
-	cmd.Flags().StringVar(&opts.repo, "repo", cwd, "Path to repository root")
-	cmd.Flags().BoolVar(&opts.dryRun, "dry-run", false, "Print what would be written without writing to graph")
-	cmd.Flags().StringVar(&opts.routeGlob, "route-glob",
-		"apps/server/domain/*/routes.go,apps/server/domain/*/*routes*.go,apps/server/domain/*/module.go",
-		"Comma-separated glob patterns for route files, relative to --repo")
-
-	return cmd
+type MiddlewareOptions struct {
+	Repo      string
+	DryRun    bool
+	RouteGlob string
 }
 
 type routeMiddleware struct {
@@ -74,87 +49,78 @@ type authUpdate struct {
 	EndpointID  string
 	EndpointKey string
 	OldAuth     string
-	NewAuth     string // "true" or "false"
+	NewAuth     string
 }
 
-func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *string, flagFormat *string) error {
-	c, err := config.New(*flagProjectID, *flagBranch)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-
-	adapter := graph.NewSDKAdapter(c.Graph)
-	fmt.Fprintln(os.Stderr, "→ Fetching Middleware objects from graph...")
-	middlewareObjs, err := cbgraph.ListAll(ctx, adapter, "Middleware")
+func RunMiddleware(ctx context.Context, g graph.GraphClient, opts *MiddlewareOptions, out io.Writer, stderr io.Writer) error {
+	fmt.Fprintln(stderr, "→ Fetching Middleware objects from graph...")
+	middlewareObjs, err := ListAllObjects(ctx, g, "Middleware")
 	if err != nil {
 		return fmt.Errorf("listing Middleware: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "  Found %d Middleware objects\n", len(middlewareObjs))
+	fmt.Fprintf(stderr, "  Found %d Middleware objects\n", len(middlewareObjs))
 
 	mwByName := make(map[string]string)
 	for _, m := range middlewareObjs {
-		name := cbgraph.StrProp(m, "name")
+		name := StrProp(m, "name")
 		if name != "" {
 			mwByName[name] = m.EntityID
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, "→ Fetching APIEndpoint objects from graph...")
-	epObjs, err := cbgraph.ListAll(ctx, adapter, "APIEndpoint")
+	fmt.Fprintln(stderr, "→ Fetching APIEndpoint objects from graph...")
+	epObjs, err := ListAllObjects(ctx, g, "APIEndpoint")
 	if err != nil {
 		return fmt.Errorf("listing APIEndpoints: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "  Found %d APIEndpoint objects\n", len(epObjs))
+	fmt.Fprintf(stderr, "  Found %d APIEndpoint objects\n", len(epObjs))
 
 	byKey := make(map[string]*sdkgraph.GraphObject)
 	byDomainHandler := make(map[string][]*sdkgraph.GraphObject)
 	for _, ep := range epObjs {
-		if cbgraph.DerefKey(ep.Key) != "" {
-			byKey[cbgraph.DerefKey(ep.Key)] = ep
+		if DerefKey(ep.Key) != "" {
+			byKey[DerefKey(ep.Key)] = ep
 		}
-		domain := cbgraph.StrProp(ep, "domain")
-		handler := strings.ToLower(cbgraph.StrProp(ep, "handler"))
+		domain := StrProp(ep, "domain")
+		handler := strings.ToLower(StrProp(ep, "handler"))
 		if domain != "" && handler != "" {
 			k := domain + ":" + handler
 			byDomainHandler[k] = append(byDomainHandler[k], ep)
 		}
 	}
 
-	fmt.Fprintln(os.Stderr, "→ Fetching existing applies_to relationships...")
-	existingRels, err := cbgraph.ListAllRels(ctx, adapter, "applies_to")
+	fmt.Fprintln(stderr, "→ Fetching existing applies_to relationships...")
+	existingRels, err := ListAllRelationships(ctx, g, "applies_to")
 	if err != nil {
 		return fmt.Errorf("listing applies_to relationships: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "  Found %d existing applies_to relationships\n", len(existingRels))
+	fmt.Fprintf(stderr, "  Found %d existing applies_to relationships\n", len(existingRels))
 
 	existingPairs := make(map[string]bool)
 	for _, r := range existingRels {
 		existingPairs[r.SrcID+":"+r.DstID] = true
 	}
 
-	fmt.Fprintln(os.Stderr, "→ Parsing route files...")
+	fmt.Fprintln(stderr, "→ Parsing route files...")
 	var allRoutes []routeMiddleware
-	for _, pattern := range strings.Split(opts.routeGlob, ",") {
+	for _, pattern := range strings.Split(opts.RouteGlob, ",") {
 		pattern = strings.TrimSpace(pattern)
-		matches, err := filepath.Glob(filepath.Join(opts.repo, pattern))
+		matches, err := filepath.Glob(filepath.Join(opts.Repo, pattern))
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  warn: glob %q: %v\n", pattern, err)
+			fmt.Fprintf(stderr, "  warn: glob %q: %v\n", pattern, err)
 			continue
 		}
 		for _, f := range matches {
 			domain := extractDomain(f)
 			routes, err := parseRouteFileMiddleware(f, domain)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "  warn: parsing %s: %v\n", f, err)
+				fmt.Fprintf(stderr, "  warn: parsing %s: %v\n", f, err)
 				continue
 			}
 			allRoutes = append(allRoutes, routes...)
 		}
 	}
-	fmt.Fprintf(os.Stderr, "  Parsed %d route-middleware entries\n", len(allRoutes))
+	fmt.Fprintf(stderr, "  Parsed %d route-middleware entries\n", len(allRoutes))
 
 	var toCreate []relRecord
 	var scopeUpdates []scopeUpdate
@@ -174,12 +140,12 @@ func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *s
 		}
 		matched++
 		epID := ep.EntityID
-		epKey := cbgraph.DerefKey(ep.Key)
+		epKey := DerefKey(ep.Key)
 
 		for _, mwName := range route.Middleware {
 			mwID, ok := mwByName[mwName]
 			if !ok {
-				fmt.Fprintf(os.Stderr, "  warn: middleware %q not found in graph (route %s.%s)\n", mwName, route.Domain, route.Handler)
+				fmt.Fprintf(stderr, "  warn: middleware %q not found in graph (route %s.%s)\n", mwName, route.Domain, route.Handler)
 				continue
 			}
 			pairKey := mwID + ":" + epID
@@ -191,7 +157,7 @@ func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *s
 		}
 
 		if len(route.Scopes) > 0 && !scopeQueued[epID] {
-			currentScopes := cbgraph.StrProp(ep, "scopes")
+			currentScopes := StrProp(ep, "scopes")
 			newScopes := strings.Join(route.Scopes, ",")
 			if currentScopes != newScopes {
 				scopeQueued[epID] = true
@@ -199,17 +165,15 @@ func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *s
 			}
 		}
 
-		// Track matched endpoints for auth_required defaulting
 		matchedEpIDs[epID] = true
 
-		// Write auth_required for matched routes
 		if !authQueued[epID] {
 			authQueued[epID] = true
 			newAuth := "false"
 			if !route.IsPublic {
 				newAuth = "true"
 			}
-			oldAuth := cbgraph.StrProp(ep, "auth_required")
+			oldAuth := StrProp(ep, "auth_required")
 			if oldAuth != newAuth {
 				authUpdates = append(authUpdates, authUpdate{
 					EndpointID:  epID,
@@ -229,18 +193,17 @@ func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *s
 	})
 	sort.Slice(scopeUpdates, func(i, j int) bool { return scopeUpdates[i].EndpointKey < scopeUpdates[j].EndpointKey })
 
-	// Default unmatched endpoints to auth_required="true" (Option B: safe assumption)
 	for _, ep := range epObjs {
 		epID := ep.EntityID
 		if matchedEpIDs[epID] || authQueued[epID] {
 			continue
 		}
-		oldAuth := cbgraph.StrProp(ep, "auth_required")
+		oldAuth := StrProp(ep, "auth_required")
 		if oldAuth != "true" {
 			authQueued[epID] = true
 			authUpdates = append(authUpdates, authUpdate{
 				EndpointID:  epID,
-				EndpointKey: cbgraph.DerefKey(ep.Key),
+				EndpointKey: DerefKey(ep.Key),
 				OldAuth:     oldAuth,
 				NewAuth:     "true",
 			})
@@ -250,8 +213,8 @@ func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *s
 
 	createdRels := 0
 	failedRels := 0
-	if !opts.dryRun && len(toCreate) > 0 {
-		fmt.Fprintf(os.Stderr, "→ Creating %d applies_to relationships...\n", len(toCreate))
+	if !opts.DryRun && len(toCreate) > 0 {
+		fmt.Fprintf(stderr, "→ Creating %d applies_to relationships...\n", len(toCreate))
 		const batchSize = 100
 		for start := 0; start < len(toCreate); start += batchSize {
 			end := start + batchSize
@@ -263,22 +226,22 @@ func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *s
 			for _, r := range batch {
 				items = append(items, sdkgraph.CreateRelationshipRequest{Type: "applies_to", SrcID: r.MiddlewareID, DstID: r.EndpointID})
 			}
-			resp, err := c.Graph.BulkCreateRelationships(ctx, &sdkgraph.BulkCreateRelationshipsRequest{Items: items})
+			resp, err := g.BulkCreateRelationships(ctx, &sdkgraph.BulkCreateRelationshipsRequest{Items: items})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "  error in bulk create batch %d-%d: %v\n", start, end, err)
+				fmt.Fprintf(stderr, "  error in bulk create batch %d-%d: %v\n", start, end, err)
 				failedRels += len(batch)
 				continue
 			}
 			createdRels += resp.Success
 			failedRels += resp.Failed
 		}
-		fmt.Fprintf(os.Stderr, "  Created: %d, Failed: %d\n", createdRels, failedRels)
+		fmt.Fprintf(stderr, "  Created: %d, Failed: %d\n", createdRels, failedRels)
 	}
 
 	appliedScopes := 0
 	failedScopes := 0
-	if !opts.dryRun && len(scopeUpdates) > 0 {
-		fmt.Fprintf(os.Stderr, "→ Updating scopes on %d endpoints...\n", len(scopeUpdates))
+	if !opts.DryRun && len(scopeUpdates) > 0 {
+		fmt.Fprintf(stderr, "→ Updating scopes on %d endpoints...\n", len(scopeUpdates))
 		const batchSize = 100
 		for start := 0; start < len(scopeUpdates); start += batchSize {
 			end := start + batchSize
@@ -290,22 +253,22 @@ func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *s
 			for _, u := range batch {
 				items = append(items, sdkgraph.BulkUpdateObjectItem{ID: u.EndpointID, Properties: map[string]any{"scopes": u.NewScopes}})
 			}
-			resp, err := c.Graph.BulkUpdateObjects(ctx, &sdkgraph.BulkUpdateObjectsRequest{Items: items})
+			resp, err := g.BulkUpdateObjects(ctx, &sdkgraph.BulkUpdateObjectsRequest{Items: items})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "  error in scope update batch %d-%d: %v\n", start, end, err)
+				fmt.Fprintf(stderr, "  error in scope update batch %d-%d: %v\n", start, end, err)
 				failedScopes += len(batch)
 				continue
 			}
 			appliedScopes += resp.Success
 			failedScopes += resp.Failed
 		}
-		fmt.Fprintf(os.Stderr, "  Scope updates applied: %d, Failed: %d\n", appliedScopes, failedScopes)
+		fmt.Fprintf(stderr, "  Scope updates applied: %d, Failed: %d\n", appliedScopes, failedScopes)
 	}
 
 	appliedAuth := 0
 	failedAuth := 0
-	if !opts.dryRun && len(authUpdates) > 0 {
-		fmt.Fprintf(os.Stderr, "→ Updating auth_required on %d endpoints...\n", len(authUpdates))
+	if !opts.DryRun && len(authUpdates) > 0 {
+		fmt.Fprintf(stderr, "→ Updating auth_required on %d endpoints...\n", len(authUpdates))
 		const batchSize = 100
 		for start := 0; start < len(authUpdates); start += batchSize {
 			end := start + batchSize
@@ -317,82 +280,53 @@ func runMiddleware(opts *middlewareOptions, flagProjectID *string, flagBranch *s
 			for _, u := range batch {
 				items = append(items, sdkgraph.BulkUpdateObjectItem{ID: u.EndpointID, Properties: map[string]any{"auth_required": u.NewAuth}})
 			}
-			resp, err := c.Graph.BulkUpdateObjects(ctx, &sdkgraph.BulkUpdateObjectsRequest{Items: items})
+			resp, err := g.BulkUpdateObjects(ctx, &sdkgraph.BulkUpdateObjectsRequest{Items: items})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "  error in auth update batch %d-%d: %v\n", start, end, err)
+				fmt.Fprintf(stderr, "  error in auth update batch %d-%d: %v\n", start, end, err)
 				failedAuth += len(batch)
 				continue
 			}
 			appliedAuth += resp.Success
 			failedAuth += resp.Failed
 		}
-		fmt.Fprintf(os.Stderr, "  Auth updates applied: %d, Failed: %d\n", appliedAuth, failedAuth)
+		fmt.Fprintf(stderr, "  Auth updates applied: %d, Failed: %d\n", appliedAuth, failedAuth)
 	}
 
-	switch *flagFormat {
-	case "json":
-		return json.NewEncoder(os.Stdout).Encode(map[string]any{
-			"summary": map[string]any{
-				"middleware_objects":    len(middlewareObjs),
-				"endpoint_objects":      len(epObjs),
-				"routes_parsed":         len(allRoutes),
-				"routes_matched":        matched,
-				"routes_unmatched":      unmatched,
-				"existing_rels":         len(existingRels),
-				"relationships_to_add":  len(toCreate),
-				"relationships_created": createdRels,
-				"relationships_failed":  failedRels,
-				"scope_updates":         len(scopeUpdates),
-				"scopes_applied":        appliedScopes,
-				"scopes_failed":         failedScopes,
-				"auth_updates":          len(authUpdates),
-				"auth_applied":          appliedAuth,
-				"auth_failed":           failedAuth,
-				"dry_run":               opts.dryRun,
-			},
-			"relationships": toCreate,
-			"scope_updates": scopeUpdates,
-			"auth_updates":  authUpdates,
-		})
-	default:
-		return printMiddlewareTable(toCreate, scopeUpdates, authUpdates, createdRels, failedRels, appliedScopes, failedScopes, appliedAuth, failedAuth, opts.dryRun, len(middlewareObjs), len(epObjs), len(allRoutes), matched, unmatched, len(existingRels))
-	}
+	return printMiddlewareTable(out, toCreate, scopeUpdates, authUpdates, createdRels, failedRels, appliedScopes, failedScopes, appliedAuth, failedAuth, opts.DryRun, len(middlewareObjs), len(epObjs), len(allRoutes), matched, unmatched, len(existingRels))
 }
 
-func printMiddlewareTable(rels []relRecord, scopes []scopeUpdate, authUpdates []authUpdate, createdRels, failedRels, appliedScopes, failedScopes, appliedAuth, failedAuth int, dryRun bool, mwCount, epCount, routesParsed, matched, unmatched, existingRels int) error {
-	now := time.Now().Format("2006-01-02")
+func printMiddlewareTable(out io.Writer, rels []relRecord, scopes []scopeUpdate, authUpdates []authUpdate, createdRels, failedRels, appliedScopes, failedScopes, appliedAuth, failedAuth int, dryRun bool, mwCount, epCount, routesParsed, matched, unmatched, existingRels int) error {
 	dryTag := ""
 	if dryRun {
 		dryTag = " [DRY RUN]"
 	}
-	fmt.Printf("┌─ GRAPH SYNC MIDDLEWARE%s\n", dryTag)
-	fmt.Printf("  Generated: %s\n\n", now)
-	fmt.Printf("┌─ SUMMARY\n")
-	fmt.Printf("  Middleware objects    : %d\n", mwCount)
-	fmt.Printf("  Endpoint objects     : %d\n", epCount)
-	fmt.Printf("  Routes parsed        : %d\n", routesParsed)
-	fmt.Printf("  Routes matched       : %d\n", matched)
-	fmt.Printf("  Routes unmatched     : %d\n", unmatched)
-	fmt.Printf("  Existing rels        : %d\n", existingRels)
-	fmt.Printf("  Relationships to add : %d\n", len(rels))
+	fmt.Fprintf(out, "┌─ GRAPH SYNC MIDDLEWARE%s\n", dryTag)
+	fmt.Fprintf(out, "┌─ SUMMARY\n")
+	fmt.Fprintf(out, "  Middleware objects    : %d\n", mwCount)
+	fmt.Fprintf(out, "  Endpoint objects     : %d\n", epCount)
+	fmt.Fprintf(out, "  Routes parsed        : %d\n", routesParsed)
+	fmt.Fprintf(out, "  Routes matched       : %d\n", matched)
+	fmt.Fprintf(out, "  Routes unmatched     : %d\n", unmatched)
+	fmt.Fprintf(out, "  Existing rels        : %d\n", existingRels)
+	fmt.Fprintf(out, "  Relationships to add : %d\n", len(rels))
 	if !dryRun {
-		fmt.Printf("  Rels created         : %d\n", createdRels)
-		fmt.Printf("  Rels failed          : %d\n", failedRels)
+		fmt.Fprintf(out, "  Rels created         : %d\n", createdRels)
+		fmt.Fprintf(out, "  Rels failed          : %d\n", failedRels)
 	}
-	fmt.Printf("  Scope updates        : %d\n", len(scopes))
+	fmt.Fprintf(out, "  Scope updates        : %d\n", len(scopes))
 	if !dryRun {
-		fmt.Printf("  Scopes applied       : %d\n", appliedScopes)
-		fmt.Printf("  Scopes failed        : %d\n", failedScopes)
+		fmt.Fprintf(out, "  Scopes applied       : %d\n", appliedScopes)
+		fmt.Fprintf(out, "  Scopes failed        : %d\n", failedScopes)
 	}
-	fmt.Printf("  Auth updates         : %d\n", len(authUpdates))
+	fmt.Fprintf(out, "  Auth updates         : %d\n", len(authUpdates))
 	if !dryRun {
-		fmt.Printf("  Auth applied         : %d\n", appliedAuth)
-		fmt.Printf("  Auth failed          : %d\n", failedAuth)
+		fmt.Fprintf(out, "  Auth applied         : %d\n", appliedAuth)
+		fmt.Fprintf(out, "  Auth failed          : %d\n", failedAuth)
 	}
-	fmt.Println()
+	fmt.Fprintln(out)
 	if len(rels) > 0 {
-		fmt.Printf("┌─ RELATIONSHIPS TO CREATE (applies_to: Middleware → APIEndpoint)\n")
-		t := tablewriter.NewWriter(os.Stdout)
+		fmt.Fprintf(out, "┌─ RELATIONSHIPS TO CREATE (applies_to: Middleware → APIEndpoint)\n")
+		t := tablewriter.NewWriter(out)
 		t.Header("MIDDLEWARE", "ENDPOINT KEY")
 		t.Configure(func(cfg *tablewriter.Config) {
 			cfg.Behavior.TrimSpace = tw.On
@@ -402,11 +336,11 @@ func printMiddlewareTable(rels []relRecord, scopes []scopeUpdate, authUpdates []
 			t.Append([]string{r.MiddlewareName, r.EndpointKey})
 		}
 		t.Render()
-		fmt.Println()
+		fmt.Fprintln(out)
 	}
 	if len(scopes) > 0 {
-		fmt.Printf("┌─ SCOPE UPDATES\n")
-		t := tablewriter.NewWriter(os.Stdout)
+		fmt.Fprintf(out, "┌─ SCOPE UPDATES\n")
+		t := tablewriter.NewWriter(out)
 		t.Header("ENDPOINT KEY", "OLD SCOPES", "NEW SCOPES")
 		t.Configure(func(cfg *tablewriter.Config) {
 			cfg.Behavior.TrimSpace = tw.On
@@ -416,11 +350,11 @@ func printMiddlewareTable(rels []relRecord, scopes []scopeUpdate, authUpdates []
 			t.Append([]string{s.EndpointKey, s.OldScopes, s.NewScopes})
 		}
 		t.Render()
-		fmt.Println()
+		fmt.Fprintln(out)
 	}
 	if len(authUpdates) > 0 {
-		fmt.Printf("┌─ AUTH UPDATES\n")
-		t := tablewriter.NewWriter(os.Stdout)
+		fmt.Fprintf(out, "┌─ AUTH UPDATES\n")
+		t := tablewriter.NewWriter(out)
 		t.Header("ENDPOINT KEY", "OLD AUTH", "NEW AUTH")
 		t.Configure(func(cfg *tablewriter.Config) {
 			cfg.Behavior.TrimSpace = tw.On
@@ -432,20 +366,6 @@ func printMiddlewareTable(rels []relRecord, scopes []scopeUpdate, authUpdates []
 		t.Render()
 	}
 	return nil
-}
-
-func extractDomain(filePath string) string {
-	const marker = "/domain/"
-	idx := strings.Index(filePath, marker)
-	if idx < 0 {
-		return ""
-	}
-	rest := filePath[idx+len(marker):]
-	parts := strings.SplitN(rest, "/", 2)
-	if len(parts) == 0 {
-		return ""
-	}
-	return parts[0]
 }
 
 type groupState struct {

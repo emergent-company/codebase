@@ -1,11 +1,11 @@
-package constitutioncmd
+package constitution
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -14,66 +14,20 @@ import (
 
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
 	cbgraph "github.com/emergent-company/codebase/graph"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
-	"github.com/spf13/cobra"
+	"github.com/emergent-company/codebase/output"
+	"github.com/emergent-company/codebase/schema"
 )
 
-// propCheckSpec is the parsed form of a rule's prop_check JSON property.
-// Example: {"field":"method","nonempty":true}
-// Example: {"field":"path","prefix":"/"}
-// Example: {"field":"auth_required","bool":true}
-type propCheckSpec struct {
+// PropCheckSpec is the parsed form of a rule's prop_check JSON property.
+type PropCheckSpec struct {
 	Field    string `json:"field"`
 	Nonempty bool   `json:"nonempty"` // value must be non-empty string
 	Prefix   string `json:"prefix"`   // value must start with this prefix
 	Bool     bool   `json:"bool"`     // value must be "true" or "false" (not absent)
 }
 
-func newCheckCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
-	var (
-		flagObjType  string
-		flagCategory string
-		flagDomain   string
-		flagRepo     string
-	)
-	cwd, _ := os.Getwd()
-
-	cmd := &cobra.Command{
-		Use:   "check",
-		Short: "Run constitution rules against graph objects and source files",
-		Long: `Evaluate constitution rules. Three modes depending on the rule:
-
-  auto_check   — regex applied to object keys. Fully automatic: pass/fail.
-  scan_pattern — ripgrep run against source files. Shows match count + samples.
-  (neither)    — shows how_to_verify hint for the AI to act on.
-
-Examples:
-  codebase constitution check --type APIEndpoint
-  codebase constitution check --type APIEndpoint --category api
-  codebase constitution check --type Domain --repo /path/to/repo
-`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if flagObjType == "" {
-				return fmt.Errorf("--type is required")
-			}
-			c, err := config.New(*flagProjectID, *flagBranch)
-			if err != nil {
-				return err
-			}
-			ctx := context.Background()
-			return runCheck(ctx, c.Graph, flagObjType, flagCategory, flagDomain, flagRepo, *flagFormat)
-		},
-	}
-
-	cmd.Flags().StringVar(&flagObjType, "type", "", "Object type to check (e.g. APIEndpoint, Service, Domain)")
-	cmd.Flags().StringVar(&flagCategory, "category", "", "Filter rules by category")
-	cmd.Flags().StringVar(&flagDomain, "domain", "", "Filter objects by domain property")
-	cmd.Flags().StringVar(&flagRepo, "repo", cwd, "Repo root for scan_pattern searches")
-	return cmd
-}
-
-// ruleEval is the result of evaluating one rule.
-type ruleEval struct {
+// RuleEval is the result of evaluating one rule.
+type RuleEval struct {
 	Rule *sdkgraph.GraphObject
 	Mode string // "auto", "prop", "scan", "review"
 	// auto + prop mode
@@ -86,30 +40,39 @@ type ruleEval struct {
 	// review mode — nothing to compute, just show how_to_verify
 }
 
-func runCheck(ctx context.Context, gc *sdkgraph.Client, objType, category, domain, repo, format string) error {
+func RunCheck(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, objType, category, domain, repo, format string) error {
 	// Load objects and rules in parallel
 	objCh := make(chan []*sdkgraph.GraphObject, 1)
 	ruleCh := make(chan []*sdkgraph.GraphObject, 1)
+	errCh := make(chan error, 2)
 
 	go func() {
-		resp, _ := gc.ListObjects(ctx, &sdkgraph.ListObjectsOptions{Type: objType, Limit: 1000})
-		if resp != nil {
-			objCh <- resp.Items
-		} else {
+		items, err := cbgraph.ListAll(ctx, gc, objType)
+		if err != nil {
+			errCh <- err
 			objCh <- nil
+			return
 		}
+		objCh <- items
 	}()
 	go func() {
-		resp, _ := gc.ListObjects(ctx, &sdkgraph.ListObjectsOptions{Type: "Rule", Limit: 500})
-		if resp != nil {
-			ruleCh <- resp.Items
-		} else {
+		items, err := cbgraph.ListAll(ctx, gc, schema.TypeRule)
+		if err != nil {
+			errCh <- err
 			ruleCh <- nil
+			return
 		}
+		ruleCh <- items
 	}()
 
 	objs := <-objCh
 	rules := <-ruleCh
+
+	select {
+	case err := <-errCh:
+		return err
+	default:
+	}
 
 	// Filter objects by domain
 	if domain != "" {
@@ -136,18 +99,18 @@ func runCheck(ctx context.Context, gc *sdkgraph.Client, objType, category, domai
 	}
 
 	if len(relevantRules) == 0 {
-		fmt.Printf("No rules found for type %q", objType)
+		fmt.Fprintf(w, "No rules found for type %q", objType)
 		if category != "" {
-			fmt.Printf(" category %q", category)
+			fmt.Fprintf(w, " category %q", category)
 		}
-		fmt.Println(". Add rules with: codebase constitution add-rule")
+		fmt.Fprintln(w, ". Add rules with: codebase constitution add-rule")
 		return nil
 	}
 
 	// Evaluate each rule
-	var evals []ruleEval
+	var evals []RuleEval
 	for _, rule := range relevantRules {
-		ev := ruleEval{Rule: rule}
+		ev := RuleEval{Rule: rule}
 		autoCheck := cbgraph.StrProp(rule, "auto_check")
 		scanPattern := cbgraph.StrProp(rule, "scan_pattern")
 		scanTarget := cbgraph.StrProp(rule, "scan_target")
@@ -173,15 +136,15 @@ func runCheck(ctx context.Context, gc *sdkgraph.Client, objType, category, domai
 
 		case propCheckRaw != "":
 			ev.Mode = "prop"
-			var spec propCheckSpec
+			var spec PropCheckSpec
 			if err := json.Unmarshal([]byte(propCheckRaw), &spec); err != nil {
 				ev.Mode = "review"
 				break
 			}
 			for _, obj := range objs {
 				key := cbgraph.DerefKey(obj.Key)
-				val := cbgraph.AnyPropStr(obj, spec.Field)
-				ok := checkPropSpec(spec, val)
+				val := anyPropStr(obj, spec.Field)
+				ok := CheckPropSpec(spec, val)
 				if ok {
 					ev.Passes = append(ev.Passes, key)
 				} else {
@@ -207,15 +170,15 @@ func runCheck(ctx context.Context, gc *sdkgraph.Client, objType, category, domai
 	}
 
 	if format == "json" {
-		return printCheckJSON(evals, objs)
+		return printCheckJSON(w, evals, objs)
 	}
 
-	printCheckTable(evals, objs, objType)
+	printCheckTable(w, evals, objs, objType)
 	return nil
 }
 
-// checkPropSpec returns true if val satisfies the propCheckSpec.
-func checkPropSpec(spec propCheckSpec, val string) bool {
+// CheckPropSpec returns true if val satisfies the PropCheckSpec.
+func CheckPropSpec(spec PropCheckSpec, val string) bool {
 	if spec.Bool {
 		// must be exactly "true" or "false"
 		return val == "true" || val == "false"
@@ -271,10 +234,10 @@ func runRgScan(repo, pattern, target string) (int, []string, error) {
 	return len(nonEmpty), samples, nil
 }
 
-func printCheckTable(evals []ruleEval, objs []*sdkgraph.GraphObject, objType string) {
+func printCheckTable(w io.Writer, evals []RuleEval, objs []*sdkgraph.GraphObject, objType string) {
 	// Sort: fails first (auto+prop), then scan, then review, then passes
 	sort.Slice(evals, func(i, j int) bool {
-		priority := func(e ruleEval) int {
+		priority := func(e RuleEval) int {
 			if (e.Mode == "auto" || e.Mode == "prop") && len(e.Fails) > 0 {
 				return 0
 			}
@@ -289,8 +252,8 @@ func printCheckTable(evals []ruleEval, objs []*sdkgraph.GraphObject, objType str
 		return priority(evals[i]) < priority(evals[j])
 	})
 
-	fmt.Printf("Constitution check: %s  (%d objects · %d rules)\n", objType, len(objs), len(evals))
-	fmt.Println(strings.Repeat("─", 72))
+	fmt.Fprintf(w, "Constitution check: %s  (%d objects · %d rules)\n", objType, len(objs), len(evals))
+	fmt.Fprintln(w, strings.Repeat("─", 72))
 
 	autoFails := 0
 	autoPass := 0
@@ -305,19 +268,19 @@ func printCheckTable(evals []ruleEval, objs []*sdkgraph.GraphObject, objType str
 		case "auto", "prop":
 			if len(ev.Fails) == 0 {
 				autoPass++
-				fmt.Printf("✓  %-42s  %d/%d pass\n", rKey, len(ev.Passes), len(ev.Passes))
+				fmt.Fprintf(w, "✓  %-42s  %d/%d pass\n", rKey, len(ev.Passes), len(ev.Passes))
 			} else {
 				autoFails += len(ev.Fails)
-				fmt.Printf("✗  %-42s  %d fail / %d pass\n", rKey, len(ev.Fails), len(ev.Passes))
+				fmt.Fprintf(w, "✗  %-42s  %d fail / %d pass\n", rKey, len(ev.Fails), len(ev.Passes))
 				shown := ev.Fails
 				if len(shown) > 5 {
 					shown = shown[:5]
 				}
 				for _, f := range shown {
-					fmt.Printf("     • %s\n", f)
+					fmt.Fprintf(w, "     • %s\n", f)
 				}
 				if len(ev.Fails) > 5 {
-					fmt.Printf("     … and %d more\n", len(ev.Fails)-5)
+					fmt.Fprintf(w, "     … and %d more\n", len(ev.Fails)-5)
 				}
 			}
 
@@ -325,51 +288,51 @@ func printCheckTable(evals []ruleEval, objs []*sdkgraph.GraphObject, objType str
 			scanRules++
 			scanPattern := cbgraph.StrProp(ev.Rule, "scan_pattern")
 			howTo := cbgraph.StrProp(ev.Rule, "how_to_verify")
-			fmt.Printf("~  %-42s  scan: %d matches\n", rKey, ev.ScanMatches)
-			fmt.Printf("   pattern: %s\n", scanPattern)
+			fmt.Fprintf(w, "~  %-42s  scan: %d matches\n", rKey, ev.ScanMatches)
+			fmt.Fprintf(w, "   pattern: %s\n", scanPattern)
 			if ev.ScanMatches > 0 {
-				fmt.Printf("   samples:\n")
+				fmt.Fprintf(w, "   samples:\n")
 				for _, s := range ev.ScanSamples {
 					// trim long lines
 					if len(s) > 120 {
 						s = s[:117] + "..."
 					}
-					fmt.Printf("     %s\n", s)
+					fmt.Fprintf(w, "     %s\n", s)
 				}
 				if ev.ScanMatches > 5 {
-					fmt.Printf("     … %d more matches\n", ev.ScanMatches-5)
+					fmt.Fprintf(w, "     … %d more matches\n", ev.ScanMatches-5)
 				}
 			} else {
-				fmt.Printf("   no matches found\n")
+				fmt.Fprintf(w, "   no matches found\n")
 			}
 			if howTo != "" {
-				fmt.Printf("   verify: %s\n", howTo)
+				fmt.Fprintf(w, "   verify: %s\n", howTo)
 			}
 
 		case "review":
 			reviewRules++
 			howTo := cbgraph.StrProp(ev.Rule, "how_to_verify")
-			fmt.Printf("?  %-42s\n", rKey)
+			fmt.Fprintf(w, "?  %-42s\n", rKey)
 			if howTo != "" {
-				fmt.Printf("   verify: %s\n", howTo)
+				fmt.Fprintf(w, "   verify: %s\n", howTo)
 			} else {
 				if len(stmt) > 100 {
 					stmt = stmt[:97] + "..."
 				}
-				fmt.Printf("   rule:   %s\n", stmt)
+				fmt.Fprintf(w, "   rule:   %s\n", stmt)
 			}
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 	}
 
-	fmt.Println(strings.Repeat("─", 72))
-	fmt.Printf("Summary:  ✓ %d auto-pass  ✗ %d auto-fail  ~ %d scan  ? %d review\n",
+	fmt.Fprintln(w, strings.Repeat("─", 72))
+	fmt.Fprintf(w, "Summary:  ✓ %d auto-pass  ✗ %d auto-fail  ~ %d scan  ? %d review\n",
 		autoPass, autoFails, scanRules, reviewRules)
-	fmt.Println()
-	fmt.Println("Legend: ✓ auto-verified  ✗ violation found  ~ scan evidence (AI interprets)  ? AI must verify")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Legend: ✓ auto-verified  ✗ violation found  ~ scan evidence (AI interprets)  ? AI must verify")
 }
 
-func printCheckJSON(evals []ruleEval, objs []*sdkgraph.GraphObject) error {
+func printCheckJSON(w io.Writer, evals []RuleEval, objs []*sdkgraph.GraphObject) error {
 	type jsonEval struct {
 		RuleKey     string   `json:"rule_key"`
 		Mode        string   `json:"mode"`
@@ -400,7 +363,7 @@ func printCheckJSON(evals []ruleEval, objs []*sdkgraph.GraphObject) error {
 		}
 		out = append(out, e)
 	}
-	return json.NewEncoder(os.Stdout).Encode(out)
+	return output.JSONTo(w, out)
 }
 
 func containsType(appliesTo, typ string) bool {

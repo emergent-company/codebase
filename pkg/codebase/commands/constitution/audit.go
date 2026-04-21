@@ -1,10 +1,10 @@
-package constitutioncmd
+package constitution
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -12,12 +12,12 @@ import (
 
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
 	cbgraph "github.com/emergent-company/codebase/graph"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
-	"github.com/spf13/cobra"
+	"github.com/emergent-company/codebase/output"
+	"github.com/emergent-company/codebase/schema"
 )
 
-// auditRuleDef is a security/performance rule seeded by `constitution audit --seed`.
-type auditRuleDef struct {
+// AuditRuleDef is a security/performance rule seeded by `constitution audit --seed`.
+type AuditRuleDef struct {
 	Key         string
 	Name        string
 	Statement   string
@@ -29,8 +29,8 @@ type auditRuleDef struct {
 	HowToVerify string
 }
 
-// securityPerformanceRules is the canonical set of security + performance audit rules.
-var securityPerformanceRules = []auditRuleDef{
+// SecurityPerformanceRules is the canonical set of security + performance audit rules.
+var SecurityPerformanceRules = []AuditRuleDef{
 	// ── Security ──────────────────────────────────────────────────────────────
 	{
 		Key:       "rule-security-auth-required-set",
@@ -116,62 +116,15 @@ var securityPerformanceRules = []auditRuleDef{
 	},
 }
 
-func newAuditCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
-	var (
-		flagAuditType string
-		flagSeed      bool
-		flagDomain    string
-	)
-
-	cmd := &cobra.Command{
-		Use:   "audit",
-		Short: "Run security and performance audit rules against the graph",
-		Long: `Run security and/or performance audit rules against graph objects.
-
-Audit rules are constitution rules tagged with audit_type=security or
-audit_type=performance. They focus on risk, not just naming conventions.
-
-Flags:
-  --type security     — run only security rules
-  --type performance  — run only performance rules
-  (omit)              — run all audit rules
-  --seed              — seed the 9 built-in security/performance rules (safe to re-run)
-  --domain            — filter APIEndpoint objects by domain
-
-Examples:
-  codebase constitution audit --seed
-  codebase constitution audit --type security
-  codebase constitution audit --type performance
-  codebase constitution audit --type security --domain auth
-`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := config.New(*flagProjectID, *flagBranch)
-			if err != nil {
-				return err
-			}
-			ctx := context.Background()
-			if flagSeed {
-				return runAuditSeed(ctx, c.Graph)
-			}
-			return runAudit(ctx, c.Graph, flagAuditType, flagDomain, *flagFormat)
-		},
-	}
-
-	cmd.Flags().StringVar(&flagAuditType, "type", "", "Audit type filter: security | performance (default: all)")
-	cmd.Flags().BoolVar(&flagSeed, "seed", false, "Seed built-in security/performance rules into the constitution")
-	cmd.Flags().StringVar(&flagDomain, "domain", "", "Filter APIEndpoint objects by domain")
-	return cmd
-}
-
-// runAuditSeed upserts all built-in audit rules and wires them to constitution-v1.
-func runAuditSeed(ctx context.Context, gc *sdkgraph.Client) error {
-	constResp, err := gc.ListObjects(ctx, &sdkgraph.ListObjectsOptions{Key: "constitution-v1", Type: "Constitution", Limit: 1})
+// RunAuditSeed upserts all built-in audit rules and wires them to constitution-v1.
+func RunAuditSeed(ctx context.Context, gc cbgraph.GraphClient, w io.Writer) error {
+	constResp, err := gc.ListObjects(ctx, &sdkgraph.ListObjectsOptions{Key: "constitution-v1", Type: schema.TypeConstitution, Limit: 1})
 	if err != nil {
 		return fmt.Errorf("listing constitution: %w", err)
 	}
 	var constID string
 	for _, obj := range constResp.Items {
-		if obj.Key != nil && *obj.Key == "constitution-v1" {
+		if cbgraph.DerefKey(obj.Key) == "constitution-v1" {
 			constID = obj.EntityID
 			break
 		}
@@ -181,7 +134,7 @@ func runAuditSeed(ctx context.Context, gc *sdkgraph.Client) error {
 	}
 
 	seeded := 0
-	for _, rule := range securityPerformanceRules {
+	for _, rule := range SecurityPerformanceRules {
 		key := rule.Key
 		props := map[string]any{
 			"name":       rule.Name,
@@ -203,33 +156,33 @@ func runAuditSeed(ctx context.Context, gc *sdkgraph.Client) error {
 		}
 
 		ruleObj, err := gc.UpsertObject(ctx, &sdkgraph.CreateObjectRequest{
-			Type:       "Rule",
+			Type:       schema.TypeRule,
 			Key:        &key,
 			Properties: props,
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warn: rule %s: %v\n", rule.Key, err)
+			fmt.Fprintf(w, "warn: rule %s: %v\n", rule.Key, err)
 			continue
 		}
 
 		_, err = gc.UpsertRelationship(ctx, &sdkgraph.CreateRelationshipRequest{
-			Type:  "includes",
+			Type:  schema.RelIncludes,
 			SrcID: constID,
 			DstID: ruleObj.EntityID,
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warn: wiring %s: %v\n", rule.Key, err)
+			fmt.Fprintf(w, "warn: wiring %s: %v\n", rule.Key, err)
 		}
-		fmt.Printf("  seeded  %-52s  [%s]\n", rule.Key, rule.AuditType)
+		fmt.Fprintf(w, "  seeded  %-52s  [%s]\n", rule.Key, rule.AuditType)
 		seeded++
 	}
 
-	fmt.Printf("\n%d audit rules seeded into constitution-v1\n", seeded)
+	fmt.Fprintf(w, "\n%d audit rules seeded into constitution-v1\n", seeded)
 	return nil
 }
 
-// auditResult is the evaluation of one audit rule against graph objects.
-type auditResult struct {
+// AuditResult is the evaluation of one audit rule against graph objects.
+type AuditResult struct {
 	Rule       *sdkgraph.GraphObject
 	AuditType  string
 	Mode       string // "prop", "auto", "review"
@@ -238,16 +191,16 @@ type auditResult struct {
 	ReviewHint string
 }
 
-func runAudit(ctx context.Context, gc *sdkgraph.Client, auditTypeFilter, domain, format string) error {
-	rulesResp, err := gc.ListObjects(ctx, &sdkgraph.ListObjectsOptions{Type: "Rule", Limit: 500})
+func RunAudit(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, auditTypeFilter, domain, format string) error {
+	rules, err := cbgraph.ListAll(ctx, gc, schema.TypeRule)
 	if err != nil {
 		return fmt.Errorf("listing rules: %w", err)
 	}
 
 	// Filter to audit rules matching the type filter
 	var auditRules []*sdkgraph.GraphObject
-	for _, r := range rulesResp.Items {
-		at := cbgraph.AnyPropStr(r, "audit_type")
+	for _, r := range rules {
+		at := anyPropStr(r, "audit_type")
 		if at == "" {
 			continue
 		}
@@ -258,7 +211,7 @@ func runAudit(ctx context.Context, gc *sdkgraph.Client, auditTypeFilter, domain,
 	}
 
 	if len(auditRules) == 0 {
-		fmt.Println("No audit rules found. Run: codebase constitution audit --seed")
+		fmt.Fprintln(w, "No audit rules found. Run: codebase constitution audit --seed")
 		return nil
 	}
 
@@ -276,13 +229,12 @@ func runAudit(ctx context.Context, gc *sdkgraph.Client, auditTypeFilter, domain,
 	// Fetch objects per type
 	objsByType := map[string][]*sdkgraph.GraphObject{}
 	for t := range neededTypes {
-		resp, err := gc.ListObjects(ctx, &sdkgraph.ListObjectsOptions{Type: t, Limit: 1000})
+		items, err := cbgraph.ListAll(ctx, gc, t)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warn: listing %s: %v\n", t, err)
+			fmt.Fprintf(w, "warn: listing %s: %v\n", t, err)
 			continue
 		}
-		items := resp.Items
-		if domain != "" && t == "APIEndpoint" {
+		if domain != "" && t == schema.TypeAPIEndpoint {
 			var filtered []*sdkgraph.GraphObject
 			for _, o := range items {
 				if cbgraph.StrProp(o, "domain") == domain {
@@ -295,13 +247,13 @@ func runAudit(ctx context.Context, gc *sdkgraph.Client, auditTypeFilter, domain,
 	}
 
 	// Evaluate each audit rule
-	var results []auditResult
+	var results []AuditResult
 	for _, rule := range auditRules {
-		at := cbgraph.AnyPropStr(rule, "audit_type")
+		at := anyPropStr(rule, "audit_type")
 		appliesTo := strings.TrimSpace(strings.Split(cbgraph.StrProp(rule, "applies_to"), ",")[0])
 		objs := objsByType[appliesTo]
 
-		res := auditResult{
+		res := AuditResult{
 			Rule:      rule,
 			AuditType: at,
 		}
@@ -313,7 +265,7 @@ func runAudit(ctx context.Context, gc *sdkgraph.Client, auditTypeFilter, domain,
 		switch {
 		case propCheckRaw != "":
 			res.Mode = "prop"
-			var spec propCheckSpec
+			var spec PropCheckSpec
 			if err := json.Unmarshal([]byte(propCheckRaw), &spec); err != nil {
 				res.Mode = "review"
 				res.ReviewHint = howTo
@@ -321,8 +273,8 @@ func runAudit(ctx context.Context, gc *sdkgraph.Client, auditTypeFilter, domain,
 			}
 			for _, obj := range objs {
 				key := cbgraph.DerefKey(obj.Key)
-				val := cbgraph.AnyPropStr(obj, spec.Field)
-				if checkPropSpec(spec, val) {
+				val := anyPropStr(obj, spec.Field)
+				if CheckPropSpec(spec, val) {
 					res.Passes = append(res.Passes, key)
 				} else {
 					res.Fails = append(res.Fails, fmt.Sprintf("%s  (%s=%q)", key, spec.Field, val))
@@ -356,7 +308,7 @@ func runAudit(ctx context.Context, gc *sdkgraph.Client, auditTypeFilter, domain,
 
 	// Sort: fails first, then review, then passes
 	sort.Slice(results, func(i, j int) bool {
-		pri := func(r auditResult) int {
+		pri := func(r AuditResult) int {
 			if (r.Mode == "prop" || r.Mode == "auto") && len(r.Fails) > 0 {
 				return 0
 			}
@@ -369,24 +321,24 @@ func runAudit(ctx context.Context, gc *sdkgraph.Client, auditTypeFilter, domain,
 	})
 
 	if format == "json" {
-		return printAuditJSON(results)
+		return printAuditJSON(w, results)
 	}
-	printAuditReport(results, auditTypeFilter, domain)
+	printAuditReport(w, results, auditTypeFilter, domain)
 	return nil
 }
 
-func printAuditReport(results []auditResult, typeFilter, domain string) {
+func printAuditReport(w io.Writer, results []AuditResult, typeFilter, domain string) {
 	now := time.Now().Format("2006-01-02")
 	title := "SECURITY + PERFORMANCE AUDIT"
 	if typeFilter != "" {
 		title = strings.ToUpper(typeFilter) + " AUDIT"
 	}
-	fmt.Printf("┌─ %s\n", title)
-	fmt.Printf("  Generated: %s", now)
+	fmt.Fprintf(w, "┌─ %s\n", title)
+	fmt.Fprintf(w, "  Generated: %s", now)
 	if domain != "" {
-		fmt.Printf("  · domain: %s", domain)
+		fmt.Fprintf(w, "  · domain: %s", domain)
 	}
-	fmt.Printf("\n\n")
+	fmt.Fprintf(w, "\n\n")
 
 	secFails, perfFails, reviewCount, passCount := 0, 0, 0, 0
 
@@ -400,50 +352,50 @@ func printAuditReport(results []auditResult, typeFilter, domain string) {
 		case "prop", "auto":
 			if len(res.Fails) == 0 {
 				passCount++
-				fmt.Printf("✓  %-14s  %-44s  %d/%d pass\n", atTag, rKey, len(res.Passes), len(res.Passes))
+				fmt.Fprintf(w, "✓  %-14s  %-44s  %d/%d pass\n", atTag, rKey, len(res.Passes), len(res.Passes))
 			} else {
 				if strings.Contains(at, "security") {
 					secFails += len(res.Fails)
 				} else {
 					perfFails += len(res.Fails)
 				}
-				fmt.Printf("✗  %-14s  %-44s  %d fail / %d pass\n", atTag, rKey, len(res.Fails), len(res.Passes))
-				fmt.Printf("   %s\n", name)
+				fmt.Fprintf(w, "✗  %-14s  %-44s  %d fail / %d pass\n", atTag, rKey, len(res.Fails), len(res.Passes))
+				fmt.Fprintf(w, "   %s\n", name)
 				shown := res.Fails
 				if len(shown) > 8 {
 					shown = shown[:8]
 				}
 				for _, f := range shown {
-					fmt.Printf("     • %s\n", f)
+					fmt.Fprintf(w, "     • %s\n", f)
 				}
 				if len(res.Fails) > 8 {
-					fmt.Printf("     … and %d more\n", len(res.Fails)-8)
+					fmt.Fprintf(w, "     … and %d more\n", len(res.Fails)-8)
 				}
 			}
 
 		case "review":
 			reviewCount++
-			fmt.Printf("?  %-14s  %-44s\n", atTag, rKey)
-			fmt.Printf("   %s\n", name)
+			fmt.Fprintf(w, "?  %-14s  %-44s\n", atTag, rKey)
+			fmt.Fprintf(w, "   %s\n", name)
 			if res.ReviewHint != "" {
 				hint := res.ReviewHint
 				if len(hint) > 200 {
 					hint = hint[:197] + "..."
 				}
-				fmt.Printf("   → %s\n", hint)
+				fmt.Fprintf(w, "   → %s\n", hint)
 			}
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 	}
 
-	fmt.Println(strings.Repeat("─", 72))
-	fmt.Printf("Summary:  ✓ %d pass  ✗ %d security violations  ✗ %d performance violations  ? %d manual review\n",
+	fmt.Fprintln(w, strings.Repeat("─", 72))
+	fmt.Fprintf(w, "Summary:  ✓ %d pass  ✗ %d security violations  ✗ %d performance violations  ? %d manual review\n",
 		passCount, secFails, perfFails, reviewCount)
-	fmt.Println()
-	fmt.Println("Legend: ✓ verified  ✗ violation  ? AI must review manually")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Legend: ✓ verified  ✗ violation  ? AI must review manually")
 }
 
-func printAuditJSON(results []auditResult) error {
+func printAuditJSON(w io.Writer, results []AuditResult) error {
 	type jsonResult struct {
 		RuleKey    string   `json:"rule_key"`
 		Name       string   `json:"name"`
@@ -470,5 +422,5 @@ func printAuditJSON(results []auditResult) error {
 		}
 		out = append(out, jr)
 	}
-	return json.NewEncoder(os.Stdout).Encode(out)
+	return output.JSONTo(w, out)
 }

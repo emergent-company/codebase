@@ -101,6 +101,32 @@ objectTypes:
       description:
         type: string
 
+  - name: Wireframe
+    label: Wireframe
+    description: >
+      An ASCII box-layout wireframe for a Context — captures the spatial
+      arrangement of UIComponents on a screen, modal, or panel.
+      Use [ComponentName] notation to reference UIComponents by name.
+      One context may have multiple wireframes (e.g. per platform, viewport, or UI state).
+    properties:
+      ascii:
+        type: string
+        description: "ASCII box layout. Use [ComponentName] to reference UIComponents. E.g. +--[Sidebar: NavMenu]--+--[Main]--+"
+      platform:
+        type: string
+        description: "Platform variant this wireframe depicts. E.g. web, mobile, desktop, tablet"
+      viewport:
+        type: string
+        description: "Viewport size or breakpoint. E.g. 375x812, 1440x900, sm, lg"
+      state:
+        type: string
+        description: "UI state depicted. E.g. default, empty, loading, error, success"
+      notes:
+        type: string
+        description: "Design annotations or constraints not expressible in ASCII"
+      description:
+        type: string
+
   - name: UIComponent
     label: UI Component
     description: >
@@ -592,6 +618,15 @@ relationshipTypes:
     targetType: APIContract
 
   # ── Context / UIComponent / Action layer ────────────────────────────────────
+
+  - name: has_wireframe
+    label: Has Wireframe
+    description: >
+      Links a Context to an ASCII wireframe. One context may have multiple
+      wireframes for different platforms, viewports, or UI states.
+      To find the parent Context of a wireframe: flow graph rels --reverse <wireframe-id>
+    sourceType: Context
+    targetType: Wireframe
 
   - name: uses_component
     label: Uses Component

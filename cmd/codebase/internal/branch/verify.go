@@ -2,11 +2,10 @@ package branchcmd
 
 import (
 	"context"
-	"fmt"
-	"path/filepath"
 
-	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
 	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
+	"github.com/mkucharz/codebase/cmd/codebase/internal/graph"
+	cbbranch "github.com/emergent-company/codebase/commands/branch"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +27,15 @@ func newVerifyCmd(flagProjectID *string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runVerify(cfg, flagBranch, flagTarget, flagMerge, flagLimit, flagVerbose, flagRepo)
+			adapter := graph.NewSDKAdapter(cfg.Graph)
+			return cbbranch.RunVerify(context.Background(), adapter, &cbbranch.VerifyOptions{
+				Branch:  flagBranch,
+				Target:  flagTarget,
+				Merge:   flagMerge,
+				Limit:   flagLimit,
+				Verbose: flagVerbose,
+				Repo:    flagRepo,
+			}, cmd.OutOrStdout())
 		},
 	}
 
@@ -41,42 +48,4 @@ func newVerifyCmd(flagProjectID *string) *cobra.Command {
 	cmd.MarkFlagRequired("branch")
 
 	return cmd
-}
-
-func runVerify(cfg *config.Client, branchID, target string, merge bool, limit int, verbose bool, repo string) error {
-	ctx := context.Background()
-	absRepo, _ := filepath.Abs(repo)
-
-	fmt.Printf("branch-verify — branch %s → %s\n", branchID, target)
-
-	mergeReq := &sdkgraph.BranchMergeRequest{
-		SourceBranchID: branchID,
-		Execute:        false,
-		Limit:          &limit,
-	}
-	resp, err := cfg.SDK.Graph.MergeBranch(ctx, target, mergeReq)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("  Conflicts: %d\n", resp.ConflictCount)
-	if resp.ConflictCount > 0 {
-		return fmt.Errorf("conflicts exist")
-	}
-
-	// Disk verification logic from branch-verify/main.go...
-	_ = absRepo
-	_ = verbose
-
-	if merge {
-		fmt.Println("Executing merge...")
-		mergeReq.Execute = true
-		_, err := cfg.SDK.Graph.MergeBranch(ctx, target, mergeReq)
-		if err != nil {
-			return err
-		}
-		fmt.Println("✓ Merge successful")
-	}
-
-	return nil
 }

@@ -53,18 +53,36 @@ func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string) 
 
 			// Fetch data
 			listAll := func(typ string) []*graph.GraphObject {
-				resp, _ := c.Graph.ListObjects(ctx, &graph.ListObjectsOptions{Type: typ})
-				if resp == nil {
-					return nil
+				var all []*graph.GraphObject
+				cursor := ""
+				for {
+					resp, _ := c.Graph.ListObjects(ctx, &graph.ListObjectsOptions{Type: typ, Limit: 500, Cursor: cursor})
+					if resp == nil || len(resp.Items) == 0 {
+						break
+					}
+					all = append(all, resp.Items...)
+					if resp.NextCursor == nil || *resp.NextCursor == "" {
+						break
+					}
+					cursor = *resp.NextCursor
 				}
-				return resp.Items
+				return all
 			}
 			listAllRels := func(typ string) []*graph.GraphRelationship {
-				resp, _ := c.Graph.ListRelationships(ctx, &graph.ListRelationshipsOptions{Type: typ})
-				if resp == nil {
-					return nil
+				var all []*graph.GraphRelationship
+				cursor := ""
+				for {
+					resp, _ := c.Graph.ListRelationships(ctx, &graph.ListRelationshipsOptions{Type: typ, Limit: 500, Cursor: cursor})
+					if resp == nil || len(resp.Items) == 0 {
+						break
+					}
+					all = append(all, resp.Items...)
+					if resp.NextCursor == nil || *resp.NextCursor == "" {
+						break
+					}
+					cursor = *resp.NextCursor
 				}
-				return resp.Items
+				return all
 			}
 
 			domains := listAll("Domain")
@@ -107,6 +125,9 @@ func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string) 
 
 			if checkEnabled("DOMAIN_NO_ENDPOINTS") {
 				for _, d := range domains {
+					if strings.ToLower(strProp(d, "type")) == "frontend" {
+						continue
+					}
 					name := strings.ToLower(strProp(d, "name"))
 					if len(epByDomain[name]) == 0 {
 						add("DOMAIN_NO_ENDPOINTS", name, name, "domain has no APIEndpoints", 2)
@@ -116,6 +137,9 @@ func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string) 
 
 			if checkEnabled("DOMAIN_NO_SERVICE") {
 				for _, d := range domains {
+					if strings.ToLower(strProp(d, "type")) == "frontend" {
+						continue
+					}
 					name := strings.ToLower(strProp(d, "name"))
 					if len(domainToSvcs[d.EntityID]) == 0 {
 						add("DOMAIN_NO_SERVICE", name, strProp(d, "name"), "domain has no Service linked via belongs_to", 2)

@@ -1,53 +1,20 @@
-package analyzecmd
+package analyze
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
-	"github.com/emergent-company/emergent.memory/apps/server/pkg/sdk"
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
-	"github.com/mkucharz/codebase/cmd/codebase/internal/graph"
-	cbgraph "github.com/emergent-company/codebase/graph"
-	"github.com/spf13/cobra"
+	"github.com/emergent-company/codebase/graph"
+	"github.com/emergent-company/codebase/schema"
 )
 
-func newContextsCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
-	var (
-		flagContext   string
-		flagType      string
-		flagShowEmpty bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "contexts",
-		Short: "List contexts and their reachable actions",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := config.New(*flagProjectID, *flagBranch)
-			if err != nil {
-				return err
-			}
-			return runContexts(cfg.SDK, flagContext, flagType, flagShowEmpty, *flagFormat)
-		},
-	}
-
-	cmd.Flags().StringVar(&flagContext, "context", "", "Filter to one context by key")
-	cmd.Flags().StringVar(&flagType, "type", "", "Filter by context_type")
-	cmd.Flags().BoolVar(&flagShowEmpty, "show-empty", false, "Include contexts with no actions")
-
-	return cmd
-}
-
-func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty bool, format string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-	defer cancel()
-
+func RunContexts(ctx context.Context, gc graph.GraphClient, w io.Writer, contextFilter, typeFilter string, showEmpty bool, format string) error {
 	var (
 		contexts  []*sdkgraph.GraphObject
 		actions   []*sdkgraph.GraphObject
@@ -70,11 +37,10 @@ func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty
 		}()
 	}
 
-			adapter := graph.NewSDKAdapter(client.Graph)
-			fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "Context"); contexts = r; return e })
-			fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "Action"); actions = r; return e })
-			fetch(func() error { r, e := cbgraph.ListAllRels(ctx, adapter, "occurs_in"); occursIn = r; return e })
-			fetch(func() error { r, e := cbgraph.ListAllRels(ctx, adapter, "has_action"); hasAction = r; return e })
+	fetch(func() error { r, e := graph.ListAll(ctx, gc, schema.TypeContext); contexts = r; return e })
+	fetch(func() error { r, e := graph.ListAll(ctx, gc, schema.TypeAction); actions = r; return e })
+	fetch(func() error { r, e := graph.ListAllRels(ctx, gc, schema.RelOccursIn); occursIn = r; return e })
+	fetch(func() error { r, e := graph.ListAllRels(ctx, gc, schema.RelHasAction); hasAction = r; return e })
 
 	wg.Wait()
 	if fetchErr != nil {
@@ -113,8 +79,8 @@ func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty
 
 	var rows []ContextRow
 	for _, c := range contexts {
-		key := cbgraph.DerefKey(c.Key)
-		ctype := cbgraph.StrProp(c, "context_type")
+		key := graph.DerefKey(c.Key)
+		ctype := graph.StrProp(c, "context_type")
 		if contextFilter != "" && !strings.EqualFold(key, contextFilter) {
 			continue
 		}
@@ -125,9 +91,9 @@ func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty
 		var actLabels []string
 		for aid := range ctxToActions[c.EntityID] {
 			if a, ok := actionByID[aid]; ok {
-				lbl := cbgraph.StrProp(a, "name")
+				lbl := graph.StrProp(a, "name")
 				if lbl == "" {
-					lbl = cbgraph.StrProp(a, "label")
+					lbl = graph.StrProp(a, "label")
 				}
 				if lbl != "" {
 					actLabels = append(actLabels, lbl)
@@ -140,7 +106,7 @@ func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty
 		}
 
 		rows = append(rows, ContextRow{
-			Key: key, Name: cbgraph.StrProp(c, "name"), ContextType: ctype, Description: cbgraph.StrProp(c, "description"), Actions: actLabels,
+			Key: key, Name: graph.StrProp(c, "name"), ContextType: ctype, Description: graph.StrProp(c, "description"), Actions: actLabels,
 		})
 	}
 
@@ -152,20 +118,20 @@ func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty
 	})
 
 	if format == "json" {
-		enc := json.NewEncoder(os.Stdout)
+		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(rows)
 	}
 
-	fmt.Printf("\n┌─ CONTEXT → ACTION MAP  (%d contexts)\n\n", len(rows))
+	fmt.Fprintf(w, "\n┌─ CONTEXT → ACTION MAP  (%d contexts)\n\n", len(rows))
 	for _, r := range rows {
-		fmt.Printf("  ┌─ %-45s [%s]\n", r.Key, r.ContextType)
-		fmt.Printf("  │  name: %s\n", r.Name)
-		fmt.Printf("  │  actions (%d):\n", len(r.Actions))
+		fmt.Fprintf(w, "  ┌─ %-45s [%s]\n", r.Key, r.ContextType)
+		fmt.Fprintf(w, "  │  name: %s\n", r.Name)
+		fmt.Fprintf(w, "  │  actions (%d):\n", len(r.Actions))
 		for _, a := range r.Actions {
-			fmt.Printf("  │    • %s\n", a)
+			fmt.Fprintf(w, "  │    • %s\n", a)
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 	}
 	return nil
 }
