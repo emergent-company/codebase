@@ -78,7 +78,7 @@ func init() {
 	rootCmd.AddCommand(synccmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
 	rootCmd.AddCommand(checkcmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
 	rootCmd.AddCommand(analyzecmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
-	rootCmd.AddCommand(graphcmd.NewCmd(&flagProjectID, &flagBranch))
+	rootCmd.AddCommand(graphcmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
 	rootCmd.AddCommand(seedcmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
 	rootCmd.AddCommand(fixcmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
 	rootCmd.AddCommand(branchcmd.NewCmd(&flagProjectID))

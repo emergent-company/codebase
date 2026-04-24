@@ -18,6 +18,10 @@ type GraphClient interface {
 	// DeleteObject deletes an object by ID. branchID is optional (pass nil for default branch).
 	DeleteObject(ctx context.Context, id string, branchID *string) error
 
+	// Search
+	HybridSearch(ctx context.Context, req *sdkgraph.HybridSearchRequest) (*sdkgraph.SearchResponse, error)
+	FTSSearch(ctx context.Context, opts *sdkgraph.FTSSearchOptions) (*sdkgraph.SearchResponse, error)
+
 	// Relationships
 	ListRelationships(ctx context.Context, opts *sdkgraph.ListRelationshipsOptions) (*sdkgraph.SearchRelationshipsResponse, error)
 	CreateRelationship(ctx context.Context, req *sdkgraph.CreateRelationshipRequest) (*sdkgraph.GraphRelationship, error)

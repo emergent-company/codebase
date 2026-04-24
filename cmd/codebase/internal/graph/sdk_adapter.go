@@ -74,3 +74,11 @@ func (a *SDKAdapter) BulkUpdateObjects(ctx context.Context, req *sdkgraph.BulkUp
 func (a *SDKAdapter) BulkCreateRelationships(ctx context.Context, req *sdkgraph.BulkCreateRelationshipsRequest) (*sdkgraph.BulkCreateRelationshipsResponse, error) {
 	return a.c.BulkCreateRelationships(ctx, req)
 }
+
+func (a *SDKAdapter) HybridSearch(ctx context.Context, req *sdkgraph.HybridSearchRequest) (*sdkgraph.SearchResponse, error) {
+	return a.c.HybridSearch(ctx, req)
+}
+
+func (a *SDKAdapter) FTSSearch(ctx context.Context, opts *sdkgraph.FTSSearchOptions) (*sdkgraph.SearchResponse, error) {
+	return a.c.FTSSearch(ctx, opts)
+}

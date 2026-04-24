@@ -36,7 +36,7 @@ var (
 	batchFailFast  bool
 )
 
-func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
+func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
 	graphCmd := &cobra.Command{
 		Use:   "graph",
 		Short: "Manage the knowledge graph",
@@ -319,6 +319,39 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 	batchCmd.Flags().StringVar(&batchFile, "file", "", "JSON file to read operations from")
 	batchCmd.Flags().BoolVar(&batchFailFast, "fail-fast", false, "Stop on first error")
 	graphCmd.AddCommand(batchCmd)
+
+	// Query (natural language / hybrid search)
+	var (
+		queryTypes []string
+		queryLimit int
+		queryMode  string
+	)
+	queryCmd := &cobra.Command{
+		Use:   "query <text>",
+		Short: "Search the graph with natural language (hybrid FTS + vector)",
+		Example: `  codebase graph query "MCP proxy support"
+  codebase graph query "authentication scenarios" --type Scenario
+  codebase graph query "open source competitors" --type Competitor --limit 10
+  codebase graph query "login flow" --mode fts --format json`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := config.New(*flagProjectID, *flagBranch)
+			if err != nil {
+				return err
+			}
+			adapter := NewSDKAdapter(c.Graph)
+			format := *flagFormat
+			return cbgraph.RunQuery(context.Background(), adapter, cmd.OutOrStdout(), args[0], format, cbgraph.QueryOptions{
+				Types: queryTypes,
+				Limit: queryLimit,
+				Mode:  queryMode,
+			})
+		},
+	}
+	queryCmd.Flags().StringSliceVar(&queryTypes, "type", nil, "Filter by object type(s), e.g. --type Scenario,Context")
+	queryCmd.Flags().IntVar(&queryLimit, "limit", 20, "Max results to return")
+	queryCmd.Flags().StringVar(&queryMode, "mode", "hybrid", "Search mode: hybrid (default) or fts")
+	graphCmd.AddCommand(queryCmd)
 
 	return graphCmd
 }

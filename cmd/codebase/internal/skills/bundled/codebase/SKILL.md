@@ -345,6 +345,13 @@ codebase graph prune
 # Batch (JSON array of ops)
 echo '[{"op":"create","type":"Domain","key":"domain-x","props":{"name":"X"}}]' | codebase graph batch
 codebase graph batch --file ops.json
+
+# Query — natural language / hybrid search (FTS + vector)
+codebase graph query "MCP proxy support"
+codebase graph query "authentication scenarios" --type Scenario
+codebase graph query "open source competitors" --type Competitor --limit 10
+codebase graph query "login flow" --mode fts --format json
+# Use this whenever a user asks to "find", "search", or "what objects relate to X"
 ```
 
 ### seed — write seed objects
