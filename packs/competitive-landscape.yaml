@@ -259,6 +259,18 @@ objectTypes:
         type: string
         description: "Additional details about the integration"
 
+  # ── Scenario (cross-pack reference stub) ─────────────────────────────────
+
+  - name: Scenario
+    label: Scenario
+    description: >
+      Cross-pack reference to a Scenario object from the code-structure pack.
+      Used as a target for the `drives` relationship from StrategicInitiative.
+    properties:
+      name:
+        type: string
+        description: "Scenario name"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # RELATIONSHIP TYPES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -354,3 +366,11 @@ relationshipTypes:
     description: This matrix covers this comparison point
     sourceType: CapabilityMatrix
     targetType: ComparisonPoint
+
+  # ── Cross-pack: Competitive → Code Structure ──────────────────────────────
+
+  - name: drives
+    label: Drives
+    description: This strategic initiative drives the implementation of a scenario in the codebase
+    sourceType: StrategicInitiative
+    targetType: Scenario

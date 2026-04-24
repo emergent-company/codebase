@@ -21,13 +21,13 @@ Works for any language or framework — Go, TypeScript, Python, Swift, Rust, etc
 ### 1. Install the blueprint
 
 ```bash
-memory blueprints https://github.com/mkucharz/codebase --project <project-slug>
+memory blueprints https://github.com/emergent-company/codebase --project <project-slug>
 ```
 
 Or from a local clone:
 
 ```bash
-git clone https://github.com/mkucharz/codebase
+git clone https://github.com/emergent-company/codebase
 memory blueprints ./codebase --project <project-slug>
 ```
 
@@ -35,19 +35,19 @@ This installs the `code-structure` template pack into your Emergent project.
 
 ### 2. Install the CLI
 
-Download the latest release binary for your platform from [GitHub Releases](https://github.com/mkucharz/codebase/releases):
+Download the latest release binary for your platform from [GitHub Releases](https://github.com/emergent-company/codebase/releases):
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/mkucharz/codebase/releases/latest/download/codebase-darwin-arm64 -o /usr/local/bin/codebase
+curl -L https://github.com/emergent-company/codebase/releases/latest/download/codebase-darwin-arm64 -o /usr/local/bin/codebase
 chmod +x /usr/local/bin/codebase
 
 # macOS (Intel)
-curl -L https://github.com/mkucharz/codebase/releases/latest/download/codebase-darwin-amd64 -o /usr/local/bin/codebase
+curl -L https://github.com/emergent-company/codebase/releases/latest/download/codebase-darwin-amd64 -o /usr/local/bin/codebase
 chmod +x /usr/local/bin/codebase
 
 # Linux (amd64)
-curl -L https://github.com/mkucharz/codebase/releases/latest/download/codebase-linux-amd64 -o /usr/local/bin/codebase
+curl -L https://github.com/emergent-company/codebase/releases/latest/download/codebase-linux-amd64 -o /usr/local/bin/codebase
 chmod +x /usr/local/bin/codebase
 ```
 

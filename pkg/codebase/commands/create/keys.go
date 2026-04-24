@@ -57,6 +57,10 @@ func SourceFileKey(path string) string {
 	return "sf-" + strings.Trim(key, "-")
 }
 
+func ActorKey(name string) string {
+	return "actor-" + Slugify(name)
+}
+
 func DomainKey(slug string) string {
 	return "dom-" + Slugify(slug)
 }
@@ -72,6 +76,44 @@ func ScenarioStepKey(scenarioKey string, order int) string {
 		parts = parts[:3]
 	}
 	return fmt.Sprintf("step-%s-%d", strings.Join(parts, "-"), order)
+}
+
+// Competitive landscape key functions
+
+func CompetitorKey(name string) string {
+	return "comp-" + Slugify(name)
+}
+
+func CompetitorFeatureKey(competitor, name string) string {
+	return "feat-" + Slugify(competitor) + "-" + Slugify(name)
+}
+
+func FeatureGapKey(name string) string {
+	return "gap-" + Slugify(name)
+}
+
+func StrategicInitiativeKey(name string) string {
+	return "init-" + Slugify(name)
+}
+
+func MarketTrendKey(name string) string {
+	return "trend-" + Slugify(name)
+}
+
+func CapabilityMatrixKey(name string) string {
+	return "matrix-" + Slugify(name)
+}
+
+func ComparisonPointKey(competitor, feature string) string {
+	return "cmp-" + Slugify(competitor) + "-" + Slugify(feature)
+}
+
+func PricingModelKey(competitor string) string {
+	return "price-" + Slugify(competitor)
+}
+
+func IntegrationKey(competitor, name string) string {
+	return "intg-" + Slugify(competitor) + "-" + Slugify(name)
 }
 
 func Slugify(s string) string {

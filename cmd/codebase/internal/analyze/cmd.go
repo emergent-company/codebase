@@ -11,5 +11,6 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 	cmd.AddCommand(newUMLCmd(flagProjectID, flagBranch, flagFormat))
 	cmd.AddCommand(newScenariosCmd(flagProjectID, flagBranch, flagFormat))
 	cmd.AddCommand(newContextsCmd(flagProjectID, flagBranch, flagFormat))
+	cmd.AddCommand(newCompetitiveCmd(flagProjectID, flagBranch, flagFormat))
 	return cmd
 }

@@ -25,7 +25,8 @@ func newCreateRootCmd(flagProjectID *string, flagBranch *string, flagFormat *str
 		Use:   "create",
 		Short: "Create a new graph object",
 	}
-	types := []string{"context", "uicomponent", "helper", "action", "apiendpoint", "sourcefile", "domain", "scenario", "step"}
+	types := []string{"context", "uicomponent", "helper", "action", "apiendpoint", "sourcefile", "domain", "scenario", "step", "actor",
+		"competitor", "competitorfeature", "featuregap", "strategicinitiative", "markettrend", "capabilitymatrix", "comparisonpoint", "pricingmodel", "integration"}
 	for _, t := range types {
 		cmd.AddCommand(newCreateTypeCmd(t, flagProjectID, flagBranch))
 	}
@@ -37,7 +38,8 @@ func newKeyRootCmd() *cobra.Command {
 		Use:   "key",
 		Short: "Generate and print a key for an object type",
 	}
-	types := []string{"context", "uicomponent", "helper", "action", "apiendpoint", "sourcefile", "domain", "scenario", "step"}
+	types := []string{"context", "uicomponent", "helper", "action", "apiendpoint", "sourcefile", "domain", "scenario", "step", "actor",
+		"competitor", "competitorfeature", "featuregap", "strategicinitiative", "markettrend", "capabilitymatrix", "comparisonpoint", "pricingmodel", "integration"}
 	for _, t := range types {
 		cmd.AddCommand(newKeyTypeCmd(t))
 	}
@@ -115,5 +117,58 @@ func addFlags(cmd *cobra.Command, objType string, opts *cbcreate.CreateOptions) 
 	case "step":
 		cmd.Flags().IntVar(&opts.Order, "order", 0, "Order (required for key)")
 		cmd.Flags().StringVar(&opts.Scenario, "scenario", "", "Scenario key (required for key)")
+	case "actor":
+		cmd.Flags().StringVar(&opts.Role, "role", "", "Actor role")
+		cmd.Flags().StringVar(&opts.ActorType, "actor-type", "", "Actor type")
+	case "competitor":
+		cmd.Flags().StringVar(&opts.Status, "status", "", "Status: active, alpha, beta, mature, deprecated, unknown")
+		cmd.Flags().StringVar(&opts.Category, "category", "", "Category: personal-agent, enterprise-agent, chat-ui, mcp-server, full-stack")
+		cmd.Flags().StringVar(&opts.Maturity, "maturity", "", "Market maturity: experimental, growing, established, dominant")
+		cmd.Flags().BoolVar(&opts.IsOpenSource, "open-source", false, "Is open source")
+		cmd.Flags().StringVar(&opts.License, "license", "", "License (e.g. MIT, Apache-2.0)")
+		cmd.Flags().StringVar(&opts.RepoURL, "repo-url", "", "Repository URL")
+		cmd.Flags().StringVar(&opts.WebsiteURL, "website-url", "", "Website URL")
+		cmd.Flags().StringVar(&opts.TechStack, "tech-stack", "", "Tech stack")
+		cmd.Flags().StringVar(&opts.TargetAudience, "target-audience", "", "Target audience")
+	case "competitorfeature":
+		cmd.Flags().StringVar(&opts.Competitor, "competitor", "", "Competitor key (required for key generation)")
+		cmd.Flags().StringVar(&opts.CapabilityArea, "capability-area", "", "Capability area")
+		cmd.Flags().BoolVar(&opts.IsCore, "core", false, "Is core feature")
+		cmd.Flags().StringVar(&opts.MaturityLevel, "maturity-level", "", "Maturity level: experimental, beta, stable, deprecated")
+	case "featuregap":
+		cmd.Flags().StringVar(&opts.CompetitorsHaveIt, "competitors-have-it", "", "Comma-separated competitor keys that have this feature")
+		cmd.Flags().StringVar(&opts.Impact, "impact", "", "Impact: low, medium, high, critical")
+		cmd.Flags().StringVar(&opts.EffortToAdd, "effort", "", "Effort to add: low, medium, high")
+		cmd.Flags().BoolVar(&opts.IsBeingWorkedOn, "in-progress", false, "Is being worked on")
+	case "strategicinitiative":
+		cmd.Flags().StringVar(&opts.CompetitiveDriver, "competitive-driver", "", "What competitive pressure drives this")
+		cmd.Flags().StringVar(&opts.Status, "status", "", "Status: planned, in-progress, done, cancelled")
+		cmd.Flags().StringVar(&opts.Priority, "priority", "", "Priority: low, medium, high, critical")
+		cmd.Flags().StringVar(&opts.TargetDate, "target-date", "", "Target date")
+		cmd.Flags().StringVar(&opts.Owner, "owner", "", "Owner")
+	case "markettrend":
+		cmd.Flags().StringVar(&opts.ImpactOnDiane, "impact-on-diane", "", "How this trend impacts Diane")
+		cmd.Flags().StringVar(&opts.ImpactLevel, "impact-level", "", "Impact level: low, medium, high, critical")
+		cmd.Flags().StringVar(&opts.Source, "source", "", "Source of this trend observation")
+		cmd.Flags().StringVar(&opts.ObservedDate, "observed-date", "", "Date first observed")
+	case "capabilitymatrix":
+		cmd.Flags().StringVar(&opts.AnalysisDate, "analysis-date", "", "Analysis date")
+		cmd.Flags().StringVar(&opts.CompetitorsAnalyzed, "competitors", "", "Comma-separated competitor keys analyzed")
+	case "comparisonpoint":
+		cmd.Flags().StringVar(&opts.Competitor, "competitor", "", "Competitor key (required for key generation)")
+		cmd.Flags().StringVar(&opts.Feature, "feature", "", "Feature/capability area (required for key generation)")
+		cmd.Flags().StringVar(&opts.Assessment, "assessment", "", "Assessment: stronger, equal, weaker, missing")
+		cmd.Flags().StringVar(&opts.Reasoning, "reasoning", "", "Reasoning for the assessment")
+		cmd.Flags().StringVar(&opts.Evidence, "evidence", "", "Evidence or source")
+		cmd.Flags().StringVar(&opts.Priority, "priority", "", "Priority: low, medium, high, critical")
+	case "pricingmodel":
+		cmd.Flags().StringVar(&opts.Competitor, "competitor", "", "Competitor key (required for key generation)")
+		cmd.Flags().StringVar(&opts.ModelType, "model-type", "", "Model type: free, freemium, subscription, usage-based, enterprise, open-source")
+		cmd.Flags().StringVar(&opts.PriceRange, "price-range", "", "Price range (e.g. '$0-20/mo')")
+		cmd.Flags().StringVar(&opts.Currency, "currency", "USD", "Currency")
+	case "integration":
+		cmd.Flags().StringVar(&opts.Competitor, "competitor", "", "Competitor key (required for key generation)")
+		cmd.Flags().StringVar(&opts.IntegrationType, "type", "", "Integration type: native, plugin, api, webhook, mcp")
+		cmd.Flags().StringVar(&opts.MaturityLevel, "maturity-level", "", "Maturity level: experimental, beta, stable, deprecated")
 	}
 }
