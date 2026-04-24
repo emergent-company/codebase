@@ -449,6 +449,10 @@ codebase key strategicinitiative "Build MCP"  # → init-build-mcp
 | PricingModel | `price-<comp>` | `price-hermes` |
 | Integration | `intg-<comp>-` | `intg-hermes-github` |
 
+> **Key generation is idempotent** — the CLI strips known prefixes before prepending them.
+> `codebase key competitor "Hermes"` and `codebase key competitor "comp-hermes"` both produce `comp-hermes`.
+> Never manually add the prefix when passing a name — pass the human name and let the CLI generate the key.
+
 ### branch — graph branch operations
 
 Branches are isolated workspaces. Use them whenever you are making a batch of changes to the graph that should be reviewed before hitting main — e.g. a competitive landscape import, a large sync, a schema refactor, or experimental planning.
@@ -535,6 +539,177 @@ codebase skills install --dir /path     # custom destination
 ---
 
 ## Common Workflows
+
+### Bootstrap a graph from scratch (scenarios-first)
+
+This is the recommended approach for starting a fresh graph on a new or existing project.
+The strategy: define the **intended behaviour** (scenarios) first, validate them, then use
+`branch verify` to determine what structural components are needed, and build out from there.
+
+#### Phase 1 — Project setup
+
+```bash
+# Bind the project (one-time)
+cat .codebase.yml           # confirm project_id + server are set
+codebase graph list --type Domain   # smoke test — should succeed (empty is fine)
+```
+
+If `.codebase.yml` doesn't exist:
+```yaml
+# .codebase.yml
+project_id: <your-memory-project-id>
+server: https://memory.emergent-company.ai
+```
+
+#### Phase 2 — Create scenarios on a branch
+
+Work on a branch so nothing hits main until you're satisfied.
+
+```bash
+# Create a planning branch
+BRANCH_ID=$(memory graph branches create --name "plan/initial-scenarios" --output json \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+echo "branch: $BRANCH_ID"
+
+# Create scenarios — one per user-facing capability
+codebase create scenario "User registers an account" --branch "$BRANCH_ID" \
+  --given "User is on the registration page" \
+  --when "User fills in email and password and submits" \
+  --then "Account is created and user is redirected to dashboard"
+
+codebase create scenario "User lists their agents" --branch "$BRANCH_ID" \
+  --given "User is authenticated" \
+  --when "User navigates to the agents page" \
+  --then "A paginated list of the user's agents is displayed"
+
+# Add steps to each scenario
+codebase create step "Open registration page" \
+  --scenario scn-user-registers-an-account --order 1 --branch "$BRANCH_ID"
+
+codebase create step "Submit registration form" \
+  --scenario scn-user-registers-an-account --order 2 --branch "$BRANCH_ID"
+
+codebase create step "See confirmation" \
+  --scenario scn-user-registers-an-account --order 3 --branch "$BRANCH_ID"
+```
+
+#### Phase 3 — Validate scenarios
+
+Check that scenarios are structurally sound before building on top of them.
+
+```bash
+# Inspect scenario structure — look for missing steps, contexts, actions
+codebase analyze scenarios --branch "$BRANCH_ID" --show-empty
+
+# Check logical consistency
+codebase check logic --branch "$BRANCH_ID" --verbose
+
+# Red flags to fix before continuing:
+#   - Scenarios with 0 steps
+#   - Steps with no context (occurs_in missing)
+#   - Steps with no action (has_action missing) except the final step
+```
+
+A scenario is **valid** when:
+- It has ≥ 1 step
+- Every non-terminal step has a context (`occurs_in`) and an action (`has_action`)
+- The terminal step has a context but no action (it's the outcome, not a trigger)
+
+Fix any issues before moving to Phase 4:
+```bash
+# Add a context to a step
+codebase create context "Registration Page" --branch "$BRANCH_ID" --route /register
+codebase graph relate \
+  --from step-user-registers-an-account-1 \
+  --to ctx-registration-page \
+  --type occurs_in \
+  --branch "$BRANCH_ID"
+
+# Add an action to a step
+codebase create action "Submit Registration" --branch "$BRANCH_ID" \
+  --type submit --domain auth
+codebase graph relate \
+  --from step-user-registers-an-account-2 \
+  --to act-auth-submit-registration \
+  --type has_action \
+  --branch "$BRANCH_ID"
+```
+
+#### Phase 4 — Verify: determine what needs to be built
+
+`branch verify` compares the branch graph against the main graph and surfaces what's
+pending. Use it after Phase 3 to see the full list of objects and relationships the
+scenarios require that don't exist yet.
+
+```bash
+# Dry-run: what would merge into main?
+codebase branch verify --branch "$BRANCH_ID" --verbose
+
+# Full merge diff in JSON — pipe to jq for analysis
+memory graph branches merge main --source "$BRANCH_ID" --output json \
+  | jq '.items[] | select(.classification == "added") | .object.type + " " + .object.key'
+```
+
+This tells you exactly which `APIEndpoint`, `Service`, `UIComponent`, `Context`, and other
+objects need to be created — grounding implementation work in the validated scenario plan.
+
+#### Phase 5 — Build out the graph
+
+With validated scenarios as the anchor, fill in the structural layer:
+
+```bash
+# Sync routes from code (adds APIEndpoint objects)
+codebase sync routes --branch "$BRANCH_ID" --dry-run
+codebase sync routes --branch "$BRANCH_ID"
+
+# Sync source files
+codebase sync files --branch "$BRANCH_ID"
+
+# Seed entities from Go source
+codebase seed entities --branch "$BRANCH_ID" \
+  --glob "apps/server/domain/**/*.go"
+
+# Wire Service→exposes→APIEndpoint
+codebase seed exposes --branch "$BRANCH_ID"
+
+# Install the constitution (coding rules)
+codebase constitution create --branch "$BRANCH_ID"
+```
+
+#### Phase 6 — Final validation and merge
+
+```bash
+# Re-run logic check — should be clean
+codebase check logic --branch "$BRANCH_ID"
+
+# Check API quality
+codebase check api --branch "$BRANCH_ID"
+
+# Dry-run merge
+memory graph branches merge main --source "$BRANCH_ID"
+
+# Merge when clean
+memory graph branches merge main --source "$BRANCH_ID" --execute
+
+# Clean up
+memory graph branches delete "$BRANCH_ID"
+```
+
+#### Summary: fresh graph checklist
+
+```
+[ ] .codebase.yml bound to project
+[ ] Planning branch created
+[ ] Scenarios created with steps
+[ ] Scenarios validated (analyze scenarios --show-empty, check logic)
+[ ] Every non-terminal step has context + action
+[ ] branch verify run — pending objects identified
+[ ] Routes synced, entities seeded
+[ ] check api clean
+[ ] Dry-run merge passes (no conflicts)
+[ ] Merged to main
+[ ] Branch deleted
+```
 
 ### First-time graph population
 

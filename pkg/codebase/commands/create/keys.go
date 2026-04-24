@@ -81,39 +81,46 @@ func ScenarioStepKey(scenarioKey string, order int) string {
 // Competitive landscape key functions
 
 func CompetitorKey(name string) string {
-	return "comp-" + Slugify(name)
+	return "comp-" + Slugify(strings.TrimPrefix(name, "comp-"))
 }
 
 func CompetitorFeatureKey(competitor, name string) string {
-	return "feat-" + Slugify(competitor) + "-" + Slugify(name)
+	comp := Slugify(strings.TrimPrefix(competitor, "comp-"))
+	feat := Slugify(strings.TrimPrefix(name, "feat-"+comp+"-"))
+	feat = strings.TrimPrefix(feat, "feat-")
+	return "feat-" + comp + "-" + feat
 }
 
 func FeatureGapKey(name string) string {
-	return "gap-" + Slugify(name)
+	return "gap-" + Slugify(strings.TrimPrefix(name, "gap-"))
 }
 
 func StrategicInitiativeKey(name string) string {
-	return "init-" + Slugify(name)
+	return "init-" + Slugify(strings.TrimPrefix(name, "init-"))
 }
 
 func MarketTrendKey(name string) string {
-	return "trend-" + Slugify(name)
+	return "trend-" + Slugify(strings.TrimPrefix(name, "trend-"))
 }
 
 func CapabilityMatrixKey(name string) string {
-	return "matrix-" + Slugify(name)
+	return "matrix-" + Slugify(strings.TrimPrefix(name, "matrix-"))
 }
 
 func ComparisonPointKey(competitor, feature string) string {
-	return "cmp-" + Slugify(competitor) + "-" + Slugify(feature)
+	comp := Slugify(strings.TrimPrefix(competitor, "comp-"))
+	return "cmp-" + comp + "-" + Slugify(feature)
 }
 
 func PricingModelKey(competitor string) string {
-	return "price-" + Slugify(competitor)
+	return "price-" + Slugify(strings.TrimPrefix(competitor, "comp-"))
 }
 
 func IntegrationKey(competitor, name string) string {
-	return "intg-" + Slugify(competitor) + "-" + Slugify(name)
+	comp := Slugify(strings.TrimPrefix(competitor, "comp-"))
+	intg := Slugify(strings.TrimPrefix(name, "intg-"+comp+"-"))
+	intg = strings.TrimPrefix(intg, "intg-")
+	return "intg-" + comp + "-" + intg
 }
 
 func Slugify(s string) string {
