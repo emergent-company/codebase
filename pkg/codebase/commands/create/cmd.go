@@ -38,6 +38,9 @@ type CreateOptions struct {
 	Given string
 	When  string
 	Then  string
+	// Actor
+	ActorRole string
+	ActorType string
 	// Step
 	Order    int
 	Scenario string
@@ -73,6 +76,8 @@ func GenerateKey(objType, name string, opts *CreateOptions) string {
 		return DomainKey(s)
 	case "scenario":
 		return ScenarioKey(name)
+	case "actor":
+		return ActorKey(name)
 	case "step":
 		return ScenarioStepKey(opts.Scenario, opts.Order)
 	default:
@@ -145,6 +150,8 @@ func mapType(objType string) string {
 		return "Domain"
 	case "scenario":
 		return "Scenario"
+	case "actor":
+		return "Actor"
 	case "step":
 		return "ScenarioStep"
 	default:
@@ -198,6 +205,9 @@ func buildProps(objType, name string, opts *CreateOptions) map[string]any {
 		p["given"] = opts.Given
 		p["when"] = opts.When
 		p["then"] = opts.Then
+	case "actor":
+		p["role"] = opts.ActorRole
+		p["type"] = opts.ActorType
 	case "step":
 		p["order"] = opts.Order
 	}
