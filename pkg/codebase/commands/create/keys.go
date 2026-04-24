@@ -7,11 +7,11 @@ import (
 )
 
 func ContextKey(name string) string {
-	return "ctx-" + Slugify(name)
+	return "ctx-" + Slugify(strings.TrimPrefix(name, "ctx-"))
 }
 
 func UIComponentKey(name string) string {
-	return "ui-" + Slugify(name)
+	return "ui-" + Slugify(strings.TrimPrefix(name, "ui-"))
 }
 
 func HelperKey(name string) string {
@@ -58,15 +58,15 @@ func SourceFileKey(path string) string {
 }
 
 func ActorKey(name string) string {
-	return "actor-" + Slugify(name)
+	return "actor-" + Slugify(strings.TrimPrefix(name, "actor-"))
 }
 
 func DomainKey(slug string) string {
-	return "dom-" + Slugify(slug)
+	return "dom-" + Slugify(strings.TrimPrefix(slug, "dom-"))
 }
 
 func ScenarioKey(name string) string {
-	return "scn-" + Slugify(name)
+	return "scn-" + Slugify(strings.TrimPrefix(name, "scn-"))
 }
 
 func ScenarioStepKey(scenarioKey string, order int) string {
