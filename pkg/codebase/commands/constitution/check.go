@@ -26,10 +26,19 @@ type PropCheckSpec struct {
 	Bool     bool   `json:"bool"`     // value must be "true" or "false" (not absent)
 }
 
+// RelationCheckSpec is the parsed form of a rule's relation_check JSON property.
+type RelationCheckSpec struct {
+	Type      string `json:"type"`      // relationship type, e.g. "has_step"
+	Direction string `json:"direction"` // "source" (default) or "target"
+	MinCount  *int   `json:"min_count,omitempty"`
+	MaxCount  *int   `json:"max_count,omitempty"`
+	Exactly   *int   `json:"exactly,omitempty"`
+}
+
 // RuleEval is the result of evaluating one rule.
 type RuleEval struct {
 	Rule *sdkgraph.GraphObject
-	Mode string // "auto", "prop", "scan", "review"
+	Mode string // "auto", "prop", "scan", "relation", "review"
 	// auto + prop mode
 	Passes []string
 	Fails  []string
@@ -116,6 +125,7 @@ func RunCheck(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, objType,
 		scanTarget := cbgraph.StrProp(rule, "scan_target")
 
 		propCheckRaw := cbgraph.StrProp(rule, "prop_check")
+		relationCheckRaw := cbgraph.StrProp(rule, "relation_check")
 
 		switch {
 		case autoCheck != "":
@@ -149,6 +159,39 @@ func RunCheck(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, objType,
 					ev.Passes = append(ev.Passes, key)
 				} else {
 					ev.Fails = append(ev.Fails, fmt.Sprintf("%s  (%s=%q)", key, spec.Field, val))
+				}
+			}
+
+		case relationCheckRaw != "":
+			ev.Mode = "relation"
+			var spec RelationCheckSpec
+			if err := json.Unmarshal([]byte(relationCheckRaw), &spec); err != nil {
+				ev.Mode = "review"
+				break
+			}
+			if spec.Direction == "" {
+				spec.Direction = "source"
+			}
+			for _, obj := range objs {
+				key := cbgraph.DerefKey(obj.Key)
+				var listOpts sdkgraph.ListRelationshipsOptions
+				listOpts.Type = spec.Type
+				listOpts.Limit = 1000
+				if spec.Direction == "target" {
+					listOpts.DstID = obj.EntityID
+				} else {
+					listOpts.SrcID = obj.EntityID
+				}
+				resp, err := gc.ListRelationships(ctx, &listOpts)
+				count := 0
+				if err == nil && resp != nil {
+					count = len(resp.Items)
+				}
+				pass := checkRelCount(spec, count)
+				if pass {
+					ev.Passes = append(ev.Passes, key)
+				} else {
+					ev.Fails = append(ev.Fails, fmt.Sprintf("%s  (%s count=%d)", key, spec.Type, count))
 				}
 			}
 
@@ -235,10 +278,10 @@ func runRgScan(repo, pattern, target string) (int, []string, error) {
 }
 
 func printCheckTable(w io.Writer, evals []RuleEval, objs []*sdkgraph.GraphObject, objType string) {
-	// Sort: fails first (auto+prop), then scan, then review, then passes
+	// Sort: fails first (auto+prop+relation), then scan, then review, then passes
 	sort.Slice(evals, func(i, j int) bool {
 		priority := func(e RuleEval) int {
-			if (e.Mode == "auto" || e.Mode == "prop") && len(e.Fails) > 0 {
+			if (e.Mode == "auto" || e.Mode == "prop" || e.Mode == "relation") && len(e.Fails) > 0 {
 				return 0
 			}
 			if e.Mode == "scan" {
@@ -247,7 +290,7 @@ func printCheckTable(w io.Writer, evals []RuleEval, objs []*sdkgraph.GraphObject
 			if e.Mode == "review" {
 				return 2
 			}
-			return 3 // auto/prop pass
+			return 3 // auto/prop/relation pass
 		}
 		return priority(evals[i]) < priority(evals[j])
 	})
@@ -265,7 +308,7 @@ func printCheckTable(w io.Writer, evals []RuleEval, objs []*sdkgraph.GraphObject
 		stmt := cbgraph.StrProp(ev.Rule, "statement")
 
 		switch ev.Mode {
-		case "auto", "prop":
+		case "auto", "prop", "relation":
 			if len(ev.Fails) == 0 {
 				autoPass++
 				fmt.Fprintf(w, "✓  %-42s  %d/%d pass\n", rKey, len(ev.Passes), len(ev.Passes))
@@ -357,8 +400,8 @@ func printCheckJSON(w io.Writer, evals []RuleEval, objs []*sdkgraph.GraphObject)
 			PassCount:   len(ev.Passes),
 			FailCount:   len(ev.Fails),
 		}
-		// For auto/prop: include fails (violations), omit full passes list to keep output compact
-		if ev.Mode == "auto" || ev.Mode == "prop" {
+		// For auto/prop/relation: include fails (violations), omit full passes list to keep output compact
+		if ev.Mode == "auto" || ev.Mode == "prop" || ev.Mode == "relation" {
 			e.Fails = ev.Fails
 		}
 		out = append(out, e)
@@ -373,4 +416,22 @@ func containsType(appliesTo, typ string) bool {
 		}
 	}
 	return false
+}
+
+// checkRelCount returns true if count satisfies the RelationCheckSpec operator.
+func checkRelCount(spec RelationCheckSpec, count int) bool {
+	if spec.Exactly != nil {
+		return count == *spec.Exactly
+	}
+	if spec.MinCount != nil && count < *spec.MinCount {
+		return false
+	}
+	if spec.MaxCount != nil && count > *spec.MaxCount {
+		return false
+	}
+	// default: if no operator specified, require at least 1
+	if spec.MinCount == nil && spec.MaxCount == nil && spec.Exactly == nil {
+		return count >= 1
+	}
+	return true
 }

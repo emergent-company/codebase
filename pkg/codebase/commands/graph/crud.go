@@ -525,13 +525,14 @@ func Tree(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, keyOrID stri
 }
 
 type batchOp struct {
-	Op     string                 `json:"op"`
-	Type   string                 `json:"type"`
-	Key    string                 `json:"key"`
-	Status string                 `json:"status"`
-	Props  map[string]interface{} `json:"props"`
-	From   string                 `json:"from"`
-	To     string                 `json:"to"`
+	Op         string                 `json:"op"`
+	Type       string                 `json:"type"`
+	Key        string                 `json:"key"`
+	Status     string                 `json:"status"`
+	Props      map[string]interface{} `json:"props"`
+	Properties map[string]interface{} `json:"properties"` // alias for props
+	From       string                 `json:"from"`
+	To         string                 `json:"to"`
 }
 
 func CreateBatch(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, werr io.Writer, data []byte, failFast bool) error {
@@ -543,6 +544,17 @@ func CreateBatch(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, werr 
 	cache := map[string]string{}
 
 	for i, op := range ops {
+		// Merge "properties" alias into "props" ("props" wins on collision)
+		if len(op.Properties) > 0 {
+			if op.Props == nil {
+				op.Props = make(map[string]interface{})
+			}
+			for k, v := range op.Properties {
+				if _, exists := op.Props[k]; !exists {
+					op.Props[k] = v
+				}
+			}
+		}
 		if op.Op == "create" {
 			req := &sdkgraph.CreateObjectRequest{Type: op.Type, Key: &op.Key, Properties: op.Props}
 			if op.Status != "" {

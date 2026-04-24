@@ -11,7 +11,7 @@ import (
 )
 
 // RunAddRule creates a Rule object and wires it to constitution-v1.
-func RunAddRule(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, key, name, statement, category, appliesTo, autoCheck, propCheck, rationale, auditType string) error {
+func RunAddRule(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, key, name, statement, category, appliesTo, autoCheck, propCheck, relationCheck, rationale, auditType string) error {
 	props := map[string]any{
 		"name":      name,
 		"statement": statement,
@@ -25,6 +25,9 @@ func RunAddRule(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, key, n
 	}
 	if propCheck != "" {
 		props["prop_check"] = propCheck
+	}
+	if relationCheck != "" {
+		props["relation_check"] = relationCheck
 	}
 	if rationale != "" {
 		props["rationale"] = rationale

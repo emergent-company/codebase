@@ -11,15 +11,16 @@ import (
 
 func newAddRuleCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 	var (
-		flagKey       string
-		flagName      string
-		flagStatement string
-		flagCategory  string
-		flagAppliesTo string
-		flagAutoCheck string
-		flagPropCheck string
-		flagRationale string
-		flagAuditType string
+		flagKey           string
+		flagName          string
+		flagStatement     string
+		flagCategory      string
+		flagAppliesTo     string
+		flagAutoCheck     string
+		flagPropCheck     string
+		flagRelationCheck string
+		flagRationale     string
+		flagAuditType     string
 	)
 
 	cmd := &cobra.Command{
