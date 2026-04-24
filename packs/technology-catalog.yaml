@@ -1,0 +1,160 @@
+name: technology-catalog
+version: "1.0.0"
+description: >
+  Catalog of technologies, algorithms, and techniques relevant to AI agent
+  memory management, retrieval, context management, and skill building.
+  Each Technology documents a specific approach, its trade-offs, and how it
+  could be applied to Diane. Links to Scenarios, Features, and other
+  Technologies for traceability.
+author: Emergent
+license: MIT
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OBJECT TYPES
+# ─────────────────────────────────────────────────────────────────────────────
+
+objectTypes:
+
+  # ── Technology ────────────────────────────────────────────────────────────
+
+  - name: Technology
+    label: Technology
+    description: >
+      A specific technique, algorithm, method, or system for memory management,
+      retrieval, context handling, or skill building. Represents a discrete
+      invention that could be adopted, adapted, or integrated into Diane.
+    properties:
+      name:
+        type: string
+        description: "Technology name. E.g. 'HRR Compositional Retrieval', 'Dialectic Reasoning'"
+      description:
+        type: string
+        description: "What this technology does and how it works"
+      category:
+        type: string
+        description: "Category: memory-storage, memory-retrieval, memory-extraction, context-management, skill-building, agent-communication, embedding"
+      approach:
+        type: string
+        description: "Core approach: vector-db, graph-db, sqlite-fts5, hierarchical-tree, cloud-api, hybrid-search, llm-driven, local-embedded, hrr-algebra, dialectic-reasoning, knowledge-graph, filesystem-hierarchy"
+      maturity:
+        type: string
+        description: "Maturity: experimental, alpha, beta, production"
+      source_project:
+        type: string
+        description: "The project/system this technology comes from. E.g. 'Holographic', 'Hindsight', 'Mem0'"
+      source_url:
+        type: string
+        description: "URL to the source project or documentation"
+      relevance_to_diane:
+        type: string
+        description: "How this technology could be applied to Diane's memory system"
+      pros:
+        type: string
+        description: "Key advantages of this approach"
+      cons:
+        type: string
+        description: "Key limitations or trade-offs"
+      implementation_notes:
+        type: string
+        description: "Technical notes on how this could be implemented"
+
+  # ── ArchitecturePattern ────────────────────────────────────────────────────
+
+  - name: ArchitecturePattern
+    label: Architecture Pattern
+    description: >
+      A higher-level architectural pattern that combines multiple technologies
+      into a coherent design. Represents how technologies compose together.
+    properties:
+      name:
+        type: string
+        description: "Pattern name. E.g. 'Three-Tier Memory', 'Hierarchical Retrieval'"
+      description:
+        type: string
+        description: "What this pattern does"
+      domain:
+        type: string
+        description: "Domain: memory, retrieval, context, skills, overall"
+      tradeoffs:
+        type: string
+        description: "Design trade-offs and decision factors"
+
+  # ── Scenario (cross-pack reference stub) ─────────────────────────────────
+  #
+  # Stub for the Scenario type defined in the code-structure pack.
+  # Enables cross-pack relates_to: Technology.applies_to.Scenario.
+
+  - name: Scenario
+    label: Scenario
+    description: "Cross-pack reference stub for Scenario"
+    properties:
+      name:
+        type: string
+        description: "Scenario name"
+
+  # ── ResearchArea ───────────────────────────────────────────────────────────
+
+  - name: ResearchArea
+    label: Research Area
+    description: >
+      An area where innovation is happening — gaps, open problems, or
+      promising directions. Helps track where Diane could lead.
+    properties:
+      name:
+        type: string
+        description: "Area name. E.g. 'Automatic Skill Building', 'Memory Dreaming'"
+      description:
+        type: string
+        description: "What this area is about"
+      status:
+        type: string
+        description: "Status: open-problem, emerging-solutions, actively-researched, saturated"
+      competitive_landscape:
+        type: string
+        description: "Who is working on this and what's the state of the art"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RELATIONSHIP TYPES
+# ─────────────────────────────────────────────────────────────────────────────
+
+relationshipTypes:
+
+  # ── Technology → Scenario ──────────────────────────────────────────────────
+
+  - name: applies_to
+    label: Applies To
+    description: This technology is relevant to this scenario
+    sourceType: Technology
+    targetType: Scenario
+
+  # ── Technology → Technology ────────────────────────────────────────────────
+
+  - name: related_to
+    label: Related To
+    description: This technology is related to another technology
+    sourceType: Technology
+    targetType: Technology
+
+  # ── ArchitecturePattern → Technology ──────────────────────────────────────
+
+  - name: composed_of
+    label: Composed Of
+    description: This architecture pattern uses this technology
+    sourceType: ArchitecturePattern
+    targetType: Technology
+
+  # ── Technology → ResearchArea ──────────────────────────────────────────────
+
+  - name: addresses
+    label: Addresses
+    description: This technology addresses this research area
+    sourceType: Technology
+    targetType: ResearchArea
+
+  # ── ResearchArea → Technology ──────────────────────────────────────────────
+
+  - name: has_solution
+    label: Has Solution
+    description: This research area has this solution
+    sourceType: ResearchArea
+    targetType: Technology
