@@ -63,7 +63,7 @@ Examples:
 				return err
 			}
 			ctx := context.Background()
-			return runAddRule(ctx, c.Graph, flagKey, flagName, flagStatement, flagCategory, flagAppliesTo, flagAutoCheck, flagPropCheck, flagRationale, flagAuditType)
+			return runAddRule(ctx, c.Graph, flagKey, flagName, flagStatement, flagCategory, flagAppliesTo, flagAutoCheck, flagPropCheck, flagRelationCheck, flagRationale, flagAuditType)
 		},
 	}
 
@@ -74,12 +74,13 @@ Examples:
 	cmd.Flags().StringVar(&flagAppliesTo, "applies-to", "", "Object type(s) this rule applies to (comma-separated)")
 	cmd.Flags().StringVar(&flagAutoCheck, "auto-check", "", "Go regex applied to object key for automatic checking")
 	cmd.Flags().StringVar(&flagPropCheck, "prop-check", "", `JSON spec for graph property check, e.g. '{"field":"method","nonempty":true}'`)
+	cmd.Flags().StringVar(&flagRelationCheck, "relation-check", "", `JSON spec for relationship count check, e.g. '{"type":"has_step","direction":"source","min_count":1}'`)
 	cmd.Flags().StringVar(&flagRationale, "rationale", "", "Why this rule exists")
 	cmd.Flags().StringVar(&flagAuditType, "audit-type", "", "Audit type(s) for filtering: security, performance (comma-separated)")
 	return cmd
 }
 
-func runAddRule(ctx context.Context, gc *sdkgraph.Client, key, name, statement, category, appliesTo, autoCheck, propCheck, rationale, auditType string) error {
+func runAddRule(ctx context.Context, gc *sdkgraph.Client, key, name, statement, category, appliesTo, autoCheck, propCheck, relationCheck, rationale, auditType string) error {
 	props := map[string]any{
 		"name":      name,
 		"statement": statement,
@@ -93,6 +94,9 @@ func runAddRule(ctx context.Context, gc *sdkgraph.Client, key, name, statement, 
 	}
 	if propCheck != "" {
 		props["prop_check"] = propCheck
+	}
+	if relationCheck != "" {
+		props["relation_check"] = relationCheck
 	}
 	if rationale != "" {
 		props["rationale"] = rationale
