@@ -25,7 +25,7 @@ func newCreateRootCmd(flagProjectID *string, flagBranch *string, flagFormat *str
 		Use:   "create",
 		Short: "Create a new graph object",
 	}
-	types := []string{"context", "uicomponent", "helper", "action", "apiendpoint", "sourcefile", "domain", "scenario", "step"}
+	types := []string{"context", "uicomponent", "helper", "action", "apiendpoint", "sourcefile", "domain", "scenario", "actor", "step"}
 	for _, t := range types {
 		cmd.AddCommand(newCreateTypeCmd(t, flagProjectID, flagBranch))
 	}
@@ -37,7 +37,7 @@ func newKeyRootCmd() *cobra.Command {
 		Use:   "key",
 		Short: "Generate and print a key for an object type",
 	}
-	types := []string{"context", "uicomponent", "helper", "action", "apiendpoint", "sourcefile", "domain", "scenario", "step"}
+	types := []string{"context", "uicomponent", "helper", "action", "apiendpoint", "sourcefile", "domain", "scenario", "actor", "step"}
 	for _, t := range types {
 		cmd.AddCommand(newKeyTypeCmd(t))
 	}
@@ -112,6 +112,9 @@ func addFlags(cmd *cobra.Command, objType string, opts *cbcreate.CreateOptions) 
 		cmd.Flags().StringVar(&opts.Given, "given", "", "Given")
 		cmd.Flags().StringVar(&opts.When, "when", "", "When")
 		cmd.Flags().StringVar(&opts.Then, "then", "", "Then")
+	case "actor":
+		cmd.Flags().StringVar(&opts.ActorRole, "role", "", "Actor role (human/ai/system)")
+		cmd.Flags().StringVar(&opts.ActorType, "type", "", "Actor type (e.g. end-user, assistant, platform)")
 	case "step":
 		cmd.Flags().IntVar(&opts.Order, "order", 0, "Order (required for key)")
 		cmd.Flags().StringVar(&opts.Scenario, "scenario", "", "Scenario key (required for key)")

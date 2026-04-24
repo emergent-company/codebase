@@ -61,6 +61,10 @@ func DomainKey(slug string) string {
 	return "dom-" + Slugify(slug)
 }
 
+func ActorKey(name string) string {
+	return "act-" + Slugify(name)
+}
+
 func ScenarioKey(name string) string {
 	return "scn-" + Slugify(name)
 }

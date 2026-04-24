@@ -73,6 +73,11 @@ func ScenarioKey(name string) string {
 	return "scn-" + slugify(name)
 }
 
+// Actor: act-<name-slug>
+func ActorKey(name string) string {
+	return "act-" + slugify(name)
+}
+
 // ScenarioStep: step-<scn-abbrev-3tokens>-<N>
 func ScenarioStepKey(scenarioKey string, order int) string {
 	// scn-create-meeting -> step-create-meeting-1
