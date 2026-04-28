@@ -48,5 +48,6 @@ type CodebaseYML struct {
 	Project   string     `yaml:"project"`
 	ProjectID string     `yaml:"project_id"`
 	Server    string     `yaml:"server"`
+	APIKey    string     `yaml:"api_key"`
 	Sync      SyncConfig `yaml:"sync"`
 }

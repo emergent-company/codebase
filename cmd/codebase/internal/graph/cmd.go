@@ -52,6 +52,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 				return err
 			}
 			adapter := NewSDKAdapter(c.Graph)
+			useJSON := flagListJSON || *flagFormat == "json"
 			return cbgraph.List(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.ListOptions{
 				Type:    flagType,
 				Key:     flagKey,
@@ -61,7 +62,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 				Filter:  flagFilter,
 				Status:  flagStatus,
 				Count:   flagCount,
-				JSON:    flagListJSON,
+				JSON:    useJSON,
 				Verbose: flagVerbose,
 			})
 		},
@@ -113,13 +114,14 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 				return err
 			}
 			adapter := NewSDKAdapter(c.Graph)
+			useJSON := flagCreateJSON || *flagFormat == "json"
 			return cbgraph.Create(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.CreateOptions{
 				Type:       flagType,
 				Key:        flagKey,
 				Properties: flagProperties,
 				Status:     flagStatus,
 				Upsert:     flagUpsert,
-				JSON:       flagCreateJSON,
+				JSON:       useJSON,
 			})
 		},
 	}
