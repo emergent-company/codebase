@@ -83,6 +83,7 @@ type CodebaseYML struct {
 	Project   string     `yaml:"project"`    // project name (resolved to ID via API)
 	ProjectID string     `yaml:"project_id"` // explicit project ID (skips name lookup)
 	Server    string     `yaml:"server"`     // optional server URL override
+	APIKey    string     `yaml:"api_key"`    // optional API key (falls back to env, ~/.memory/config.yaml)
 	Sync      SyncConfig `yaml:"sync"`       // sync sub-command configuration
 }
 
@@ -96,16 +97,19 @@ type Client struct {
 
 // New creates a configured Client. flagProjectID overrides all other sources.
 func New(flagProjectID, flagBranch string) (*Client, error) {
+	yml, err := findAndParseYML()
+	if err == nil {
+		if yml.APIKey != "" {
+			os.Setenv("MEMORY_API_KEY", yml.APIKey)
+		}
+		if yml.Server != "" {
+			os.Setenv("MEMORY_SERVER_URL", yml.Server)
+		}
+	}
+
 	sdkClient, err := sdk.NewFromEnv()
 	if err != nil {
-		yml, _ := findAndParseYML()
-		if yml != nil && yml.Server != "" {
-			os.Setenv("MEMORY_SERVER_URL", yml.Server)
-			sdkClient, err = sdk.NewFromEnv()
-		}
-		if err != nil {
-			return nil, fmt.Errorf("memory auth: %w", err)
-		}
+		return nil, fmt.Errorf("memory auth: %w", err)
 	}
 
 	projectID := flagProjectID

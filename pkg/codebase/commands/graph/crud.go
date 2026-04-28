@@ -294,10 +294,23 @@ type RelateOptions struct {
 }
 
 func Relate(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, opts RelateOptions) error {
+	srcID := opts.From
+	if !uuidRE.MatchString(opts.From) {
+		if o, err := cbgraph.GetByKey(ctx, gc, opts.From); err == nil {
+			srcID = o.EntityID
+		}
+	}
+	dstID := opts.To
+	if !uuidRE.MatchString(opts.To) {
+		if o, err := cbgraph.GetByKey(ctx, gc, opts.To); err == nil {
+			dstID = o.EntityID
+		}
+	}
+
 	req := &sdkgraph.CreateRelationshipRequest{
 		Type:  opts.Type,
-		SrcID: opts.From,
-		DstID: opts.To,
+		SrcID: srcID,
+		DstID: dstID,
 	}
 
 	var rel *sdkgraph.GraphRelationship
