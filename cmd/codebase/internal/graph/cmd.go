@@ -36,7 +36,7 @@ var (
 	batchFailFast  bool
 )
 
-func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
+func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
 	graphCmd := &cobra.Command{
 		Use:   "graph",
 		Short: "Manage the knowledge graph",
@@ -61,7 +61,7 @@ func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 				Filter:  flagFilter,
 				Status:  flagStatus,
 				Count:   flagCount,
-				JSON:    flagListJSON,
+				JSON:    flagListJSON || *flagFormat == "json",
 				Verbose: flagVerbose,
 			})
 		},
