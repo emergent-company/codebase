@@ -250,6 +250,7 @@ type UpdateOptions struct {
 	Key        string
 	Properties string
 	Status     string
+	JSON       bool
 }
 
 func Update(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, opts UpdateOptions) error {
@@ -282,6 +283,16 @@ func Update(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, opts Updat
 	if err != nil {
 		return err
 	}
+
+	if opts.JSON {
+		data, err := json.MarshalIndent(obj, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(w, string(data))
+		return nil
+	}
+
 	fmt.Fprintln(w, obj.EntityID)
 	return nil
 }
