@@ -350,6 +350,9 @@ objectTypes:
       registry:
         type: string
         description: "Package registry. E.g. npm, go-modules, pypi, cargo"
+      repo_url:
+        type: string
+        description: "URL to the source repository. Used for tracking releases, changelogs, and updates. E.g. https://github.com/robfig/cron"
       description:
         type: string
 

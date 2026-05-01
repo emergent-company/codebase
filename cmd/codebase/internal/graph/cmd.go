@@ -27,6 +27,7 @@ var (
 	flagStatus     string
 	flagUpsert     bool
 	flagCreateJSON bool
+	flagUpdateJSON bool
 	flagVerbose    bool
 	flagCount      bool
 	flagAll        bool
@@ -61,7 +62,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 				Filter:  flagFilter,
 				Status:  flagStatus,
 				Count:   flagCount,
-				JSON:    flagListJSON,
+				JSON:    flagListJSON || *flagFormat == "json",
 				Verbose: flagVerbose,
 			})
 		},
@@ -148,6 +149,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 				Key:        flagKey,
 				Properties: flagProperties,
 				Status:     flagStatus,
+				JSON:       flagUpdateJSON || *flagFormat == "json",
 			})
 		},
 	}
@@ -155,6 +157,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 	updateCmd.Flags().StringVar(&flagKey, "key", "", "Object key")
 	updateCmd.Flags().StringVar(&flagProperties, "properties", "{}", "Object properties (JSON)")
 	updateCmd.Flags().StringVar(&flagStatus, "status", "", "Object status")
+	updateCmd.Flags().BoolVar(&flagUpdateJSON, "json", false, "Output the updated object as JSON")
 	graphCmd.AddCommand(updateCmd)
 
 	// Relate

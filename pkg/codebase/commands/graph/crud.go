@@ -250,6 +250,7 @@ type UpdateOptions struct {
 	Key        string
 	Properties string
 	Status     string
+	JSON       bool
 }
 
 func Update(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, opts UpdateOptions) error {
@@ -282,6 +283,16 @@ func Update(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, opts Updat
 	if err != nil {
 		return err
 	}
+
+	if opts.JSON {
+		data, err := json.MarshalIndent(obj, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(w, string(data))
+		return nil
+	}
+
 	fmt.Fprintln(w, obj.EntityID)
 	return nil
 }
@@ -294,10 +305,46 @@ type RelateOptions struct {
 }
 
 func Relate(ctx context.Context, gc cbgraph.GraphClient, w io.Writer, opts RelateOptions) error {
+	srcID := opts.From
+	if !uuidRE.MatchString(srcID) {
+		obj, err := cbgraph.GetByKey(ctx, gc, srcID)
+		if err != nil {
+			for _, t := range fallbackTypes {
+				if o, e2 := cbgraph.GetByKeyAndType(ctx, gc, srcID, t); e2 == nil {
+					obj = o
+					err = nil
+					break
+				}
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("could not resolve --from %q to an object ID: %w", srcID, err)
+		}
+		srcID = obj.EntityID
+	}
+
+	dstID := opts.To
+	if !uuidRE.MatchString(dstID) {
+		obj, err := cbgraph.GetByKey(ctx, gc, dstID)
+		if err != nil {
+			for _, t := range fallbackTypes {
+				if o, e2 := cbgraph.GetByKeyAndType(ctx, gc, dstID, t); e2 == nil {
+					obj = o
+					err = nil
+					break
+				}
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("could not resolve --to %q to an object ID: %w", dstID, err)
+		}
+		dstID = obj.EntityID
+	}
+
 	req := &sdkgraph.CreateRelationshipRequest{
 		Type:  opts.Type,
-		SrcID: opts.From,
-		DstID: opts.To,
+		SrcID: srcID,
+		DstID: dstID,
 	}
 
 	var rel *sdkgraph.GraphRelationship

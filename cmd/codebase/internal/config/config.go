@@ -83,6 +83,7 @@ type CodebaseYML struct {
 	Project   string     `yaml:"project"`    // project name (resolved to ID via API)
 	ProjectID string     `yaml:"project_id"` // explicit project ID (skips name lookup)
 	Server    string     `yaml:"server"`     // optional server URL override
+	APIKey    string     `yaml:"api_key"`    // optional API key (set as MEMORY_API_KEY)
 	Sync      SyncConfig `yaml:"sync"`       // sync sub-command configuration
 }
 
@@ -96,9 +97,15 @@ type Client struct {
 
 // New creates a configured Client. flagProjectID overrides all other sources.
 func New(flagProjectID, flagBranch string) (*Client, error) {
+	yml, _ := findAndParseYML()
+	if yml != nil && yml.APIKey != "" {
+		if err := os.Setenv("MEMORY_API_KEY", yml.APIKey); err != nil {
+			return nil, fmt.Errorf("exporting api_key from .codebase.yml: %w", err)
+		}
+	}
+
 	sdkClient, err := sdk.NewFromEnv()
 	if err != nil {
-		yml, _ := findAndParseYML()
 		if yml != nil && yml.Server != "" {
 			os.Setenv("MEMORY_SERVER_URL", yml.Server)
 			sdkClient, err = sdk.NewFromEnv()
@@ -114,7 +121,6 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 	}
 
 	if projectID == "" {
-		yml, _ := findAndParseYML()
 		if yml != nil {
 			if yml.ProjectID != "" {
 				projectID = yml.ProjectID

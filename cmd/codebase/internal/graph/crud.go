@@ -315,6 +315,26 @@ func runUpdate(cmd *cobra.Command, args []string, flagProjectID *string, flagBra
 	return nil
 }
 
+func resolveID(ctx context.Context, gc *sdkgraph.Client, idOrKey string) (string, error) {
+	if uuidRE.MatchString(idOrKey) {
+		return idOrKey, nil
+	}
+	obj, err := getByKey(ctx, gc, idOrKey)
+	if err != nil {
+		for _, t := range fallbackTypes {
+			if o, e2 := getByKeyAndType(ctx, gc, idOrKey, t); e2 == nil {
+				obj = o
+				err = nil
+				break
+			}
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("could not resolve %q to an object ID: %w", idOrKey, err)
+	}
+	return obj.EntityID, nil
+}
+
 func runRelate(cmd *cobra.Command, args []string, flagProjectID *string, flagBranch *string) error {
 	c, err := config.New(*flagProjectID, *flagBranch)
 	if err != nil {
@@ -322,10 +342,19 @@ func runRelate(cmd *cobra.Command, args []string, flagProjectID *string, flagBra
 	}
 	ctx := context.Background()
 
+	srcID, err := resolveID(ctx, c.Graph, flagFrom)
+	if err != nil {
+		return err
+	}
+	dstID, err := resolveID(ctx, c.Graph, flagTo)
+	if err != nil {
+		return err
+	}
+
 	req := &sdkgraph.CreateRelationshipRequest{
 		Type:  flagType,
-		SrcID: flagFrom,
-		DstID: flagTo,
+		SrcID: srcID,
+		DstID: dstID,
 	}
 
 	var rel *sdkgraph.GraphRelationship
