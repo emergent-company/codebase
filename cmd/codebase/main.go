@@ -44,6 +44,7 @@ var (
 	flagProjectID string
 	flagBranch    string
 	flagFormat    string
+	flagServer    string
 )
 
 var rootCmd = &cobra.Command{
@@ -72,6 +73,13 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&flagProjectID, "project-id", "", "Memory project ID (overrides .codebase.yml and MEMORY_PROJECT_ID)")
 	rootCmd.PersistentFlags().StringVar(&flagBranch, "branch", "", "Graph branch ID (default: main branch)")
 	rootCmd.PersistentFlags().StringVar(&flagFormat, "format", "table", "Output format: table, json, markdown")
+	rootCmd.PersistentFlags().StringVar(&flagServer, "server", "", "Memory server URL (overrides ~/.memory/config.yaml and .codebase.yml)")
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if flagServer != "" {
+			os.Setenv("MEMORY_SERVER_URL", flagServer)
+		}
+		return nil
+	}
 
 	// Register command groups
 	rootCmd.AddCommand(onboardcmd.NewCmd(&flagProjectID, &flagBranch))

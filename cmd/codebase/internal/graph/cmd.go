@@ -12,29 +12,30 @@ import (
 )
 
 var (
-	flagType       string
-	flagKey        string
-	flagFilter     []string
-	flagLimit      int
-	flagProperties string
-	flagFrom       string
-	flagTo         string
-	flagRelType    string
-	flagID         string
-	flagListJSON   bool
-	flagCursor     string
-	flagDryRun     bool
-	flagStatus     string
-	flagUpsert     bool
-	flagCreateJSON bool
-	flagUpdateJSON bool
-	flagVerbose    bool
-	flagCount      bool
-	flagAll        bool
-	flagDepth      int
-	flagNoColor    bool
-	batchFile      string
-	batchFailFast  bool
+	flagType           string
+	flagKey            string
+	flagFilter         []string
+	flagLimit          int
+	flagProperties     string
+	flagPropertiesFile string
+	flagFrom           string
+	flagTo             string
+	flagRelType        string
+	flagID             string
+	flagListJSON       bool
+	flagCursor         string
+	flagDryRun         bool
+	flagStatus         string
+	flagUpsert         bool
+	flagCreateJSON     bool
+	flagUpdateJSON     bool
+	flagVerbose        bool
+	flagCount          bool
+	flagAll            bool
+	flagDepth          int
+	flagNoColor        bool
+	batchFile          string
+	batchFailFast      bool
 )
 
 func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
@@ -109,6 +110,14 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 		Use:   "create",
 		Short: "Create a new object",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			props := flagProperties
+			if flagPropertiesFile != "" {
+				data, err := os.ReadFile(flagPropertiesFile)
+				if err != nil {
+					return fmt.Errorf("reading properties file: %w", err)
+				}
+				props = string(data)
+			}
 			c, err := config.New(*flagProjectID, *flagBranch)
 			if err != nil {
 				return err
@@ -117,7 +126,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 			return cbgraph.Create(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.CreateOptions{
 				Type:       flagType,
 				Key:        flagKey,
-				Properties: flagProperties,
+				Properties: props,
 				Status:     flagStatus,
 				Upsert:     flagUpsert,
 				JSON:       flagCreateJSON,
@@ -127,6 +136,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 	createCmd.Flags().StringVar(&flagType, "type", "", "Object type (required)")
 	createCmd.Flags().StringVar(&flagKey, "key", "", "Object key (required)")
 	createCmd.Flags().StringVar(&flagProperties, "properties", "{}", "Object properties (JSON)")
+	createCmd.Flags().StringVar(&flagPropertiesFile, "properties-file", "", "Read properties from a JSON file (overrides --properties)")
 	createCmd.Flags().StringVar(&flagStatus, "status", "", "Object status")
 	createCmd.Flags().BoolVar(&flagUpsert, "upsert", false, "Create or update if key already exists")
 	createCmd.Flags().BoolVar(&flagCreateJSON, "json", false, "Output the created object as JSON")
@@ -139,6 +149,14 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 		Use:   "update",
 		Short: "Update an existing object",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			props := flagProperties
+			if flagPropertiesFile != "" {
+				data, err := os.ReadFile(flagPropertiesFile)
+				if err != nil {
+					return fmt.Errorf("reading properties file: %w", err)
+				}
+				props = string(data)
+			}
 			c, err := config.New(*flagProjectID, *flagBranch)
 			if err != nil {
 				return err
@@ -147,7 +165,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 			return cbgraph.Update(context.Background(), adapter, cmd.OutOrStdout(), cbgraph.UpdateOptions{
 				ID:         flagID,
 				Key:        flagKey,
-				Properties: flagProperties,
+				Properties: props,
 				Status:     flagStatus,
 				JSON:       flagUpdateJSON || *flagFormat == "json",
 			})
@@ -156,6 +174,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 	updateCmd.Flags().StringVar(&flagID, "id", "", "Object ID")
 	updateCmd.Flags().StringVar(&flagKey, "key", "", "Object key")
 	updateCmd.Flags().StringVar(&flagProperties, "properties", "{}", "Object properties (JSON)")
+	updateCmd.Flags().StringVar(&flagPropertiesFile, "properties-file", "", "Read properties from a JSON file (overrides --properties)")
 	updateCmd.Flags().StringVar(&flagStatus, "status", "", "Object status")
 	updateCmd.Flags().BoolVar(&flagUpdateJSON, "json", false, "Output the updated object as JSON")
 	graphCmd.AddCommand(updateCmd)
