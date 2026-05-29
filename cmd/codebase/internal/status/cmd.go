@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
 	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
@@ -29,11 +30,16 @@ type typeCount struct {
 }
 
 func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
+	var flagApp string
+
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Test connection and show project statistics",
 		Long: `Test connection to the Memory Platform and show project statistics
-with per-type breakdowns for objects and relationships.`,
+with per-type breakdowns for objects and relationships.
+
+Use --app to scope statistics to a single application from .codebase.yml.`,
+
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,9 +57,10 @@ with per-type breakdowns for objects and relationships.`,
 				serverURL = "https://memory.emergent-company.ai"
 			}
 
+			// --- App scope ---
+			scope := resolveAppScope(ctx, cfg.Graph, flagApp)
+
 			// --- Project name ---
-			// Try /api/auth/me first — no projects:read scope needed (RequireAuth only).
-			// Falls back to .codebase.yml project: field.
 			projectName := cfg.ProjectName
 			if projectName == "" {
 				projectName = fetchProjectName(ctx, cfg, serverURL)
@@ -155,12 +162,26 @@ with per-type breakdowns for objects and relationships.`,
 			if projectName != "" {
 				projLine = fmt.Sprintf("%s (%s)", projectName, shortID)
 			}
+			if scope != nil {
+				projLine = fmt.Sprintf("%s  app: %s", projLine, scope.App.Name)
+			}
 
 			fmt.Fprintf(out, "Server:     %s\n", serverURL)
 			fmt.Fprintf(out, "Auth:       ✓ OK\n")
 			fmt.Fprintf(out, "Project:    %s\n", projLine)
 			if purpose != "" {
 				fmt.Fprintf(out, "Purpose:    %s\n", purpose)
+			}
+			if scope != nil {
+				appTypeLabel := scope.App.AppType
+				if appTypeLabel == "" {
+					appTypeLabel = "unknown"
+				}
+				fmt.Fprintf(out, "App Type:   %s\n", appTypeLabel)
+				fmt.Fprintf(out, "Root Path:  %s\n", scope.App.RootPath)
+				if len(scope.App.Patterns) > 0 {
+					fmt.Fprintf(out, "Patterns:   %s\n", strings.Join(scope.App.Patterns, ", "))
+				}
 			}
 			fmt.Fprintf(out, "\n")
 
@@ -196,6 +217,8 @@ with per-type breakdowns for objects and relationships.`,
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&flagApp, "app", "", "Filter to a specific app (key from .codebase.yml apps section, e.g. \"api-server\")")
 
 	return cmd
 }
