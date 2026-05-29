@@ -13,6 +13,14 @@ import (
 	"github.com/emergent-company/codebase/commands/sync"
 )
 
+// ObjectType set for "architectural" domain categories that should not
+// trigger SCENARIO_NO_ENDPOINTS in functional/domain-space checks.
+var scenarioDomainTypes = map[string]bool{
+	"action": true, "automation": true, "conversation": true,
+	"distribution": true, "knowledge": true, "memory": true,
+	"observability": true, "system": true,
+}
+
 type LogicFinding struct {
 	Check  string `json:"check"`
 	Domain string `json:"domain"`
@@ -133,6 +141,95 @@ func RunLogic(ctx context.Context, g graph.GraphClient, opts *LogicOptions, out 
 			if len(domainToSvcs[d.EntityID]) == 0 {
 				add("DOMAIN_NO_SERVICE", name, sync.StrProp(d, "name"), "domain has no Service linked via belongs_to", 2)
 			}
+		}
+	}
+
+	// ── Scenario checks ──────────────────────────────────────────
+	scenarios := listAll("Scenario")
+
+	scenarioHasStep := make(map[string]bool)
+	for _, r := range listAllRels("has_step") {
+		scenarioHasStep[r.SrcID] = true
+	}
+
+	// SCENARIO_NO_STEPS: scenarios without has_step relationships
+	if checkEnabled("SCENARIO_NO_STEPS") {
+		for _, s := range scenarios {
+			if !scenarioHasStep[s.EntityID] {
+				name := sync.StrProp(s, "name")
+				key := sync.DerefKey(s.Key)
+				dom := sync.StrProp(s, "domain")
+				if dom == "" {
+					dom = "unknown"
+				}
+				add("SCENARIO_NO_STEPS", dom, key, fmt.Sprintf("scenario %q has no has_step relationships", name), 1)
+			}
+		}
+	}
+
+	// SCENARIO_NO_DOMAIN: scenarios without a domain property
+	if checkEnabled("SCENARIO_NO_DOMAIN") {
+		for _, s := range scenarios {
+			if sync.StrProp(s, "domain") == "" {
+				key := sync.DerefKey(s.Key)
+				name := sync.StrProp(s, "name")
+				add("SCENARIO_NO_DOMAIN", "unknown", key, fmt.Sprintf("scenario %q missing domain property", name), 2)
+			}
+		}
+	}
+
+	// ── Domain checks ────────────────────────────────────────────
+	allDomains := listAll("Domain")
+
+	// DOMAIN_NO_SCENARIOS: domains (functional type, not code domain) with no scenarios
+	if checkEnabled("DOMAIN_NO_SCENARIOS") {
+		scenarioByDomain := make(map[string]int)
+		for _, s := range scenarios {
+			d := strings.ToLower(sync.StrProp(s, "domain"))
+			scenarioByDomain[d]++
+		}
+		for _, d := range allDomains {
+			// Only flag functional domains (type=scenario or has scenario-pattern name)
+			dtype := strings.ToLower(sync.StrProp(d, "type"))
+			dname := strings.ToLower(sync.StrProp(d, "name"))
+			if dtype != "scenario" && !scenarioDomainTypes[dname] {
+				continue
+			}
+			if scenarioByDomain[dname] == 0 && scenarioByDomain[strings.TrimPrefix(dname, "dom-")] == 0 {
+				add("DOMAIN_NO_SCENARIOS", dname, sync.DerefKey(d.Key), fmt.Sprintf("domain %q has no scenarios", sync.StrProp(d, "name")), 2)
+			}
+		}
+	}
+
+	// DOMAIN_DUPLICATE_NAME: domains whose names overlap confusingly
+	if checkEnabled("DOMAIN_DUPLICATE_NAME") {
+		domainNames := make(map[string][]*sdkgraph.GraphObject)
+		for _, d := range allDomains {
+			n := strings.ToLower(sync.StrProp(d, "name"))
+			domainNames[n] = append(domainNames[n], d)
+		}
+		checked := make(map[string]bool)
+		for _, d := range allDomains {
+			n := strings.ToLower(sync.StrProp(d, "name"))
+			if checked[n] {
+				continue
+			}
+			for otherName, objs := range domainNames {
+				if otherName == n {
+					continue
+				}
+				// Detect: "memory" vs "dom-memory", "graph-api" vs "dom-graph-api"
+				stripped := strings.TrimPrefix(otherName, "dom-")
+				if stripped == n || strings.TrimPrefix(n, "dom-") == otherName {
+					checked[n] = true
+					checked[otherName] = true
+					add("DOMAIN_DUPLICATE_NAME", n, fmt.Sprintf("%s, %s", sync.DerefKey(d.Key), sync.DerefKey(objs[0].Key)),
+						fmt.Sprintf("domains %q (%s) and %q (%s) have overlapping names — may be redundant or need a linking relationship",
+							n, sync.DerefKey(d.Key), otherName, sync.DerefKey(objs[0].Key)), 2)
+					break
+				}
+			}
+			checked[n] = true
 		}
 	}
 

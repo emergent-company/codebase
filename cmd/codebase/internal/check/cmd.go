@@ -14,5 +14,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 	cmd.AddCommand(newLogicCmd(flagProjectID, flagBranch, flagFormat, &flagApp))
 	cmd.AddCommand(newCoverageCmd(flagProjectID, flagBranch, flagFormat, &flagApp))
 	cmd.AddCommand(newComplexityCmd(flagProjectID, flagBranch, flagFormat, &flagApp))
+	cmd.AddCommand(newCompletenessCmd(flagProjectID, flagBranch, flagFormat))
+	cmd.AddCommand(newOrphansCmd(flagProjectID, flagBranch, flagFormat))
 	return cmd
 }
