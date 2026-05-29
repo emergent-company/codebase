@@ -31,6 +31,7 @@ import (
 	skillscmd "github.com/mkucharz/codebase/cmd/codebase/internal/skills"
 	statuscmd "github.com/mkucharz/codebase/cmd/codebase/internal/status"
 	synccmd "github.com/mkucharz/codebase/cmd/codebase/internal/sync"
+	upgradecmd "github.com/mkucharz/codebase/cmd/codebase/internal/upgrade"
 	"github.com/spf13/cobra"
 )
 
@@ -93,6 +94,7 @@ func init() {
 	rootCmd.AddCommand(branchcmd.NewCmd(&flagProjectID))
 	rootCmd.AddCommand(skillscmd.NewCmd())
 	rootCmd.AddCommand(statuscmd.NewCmd(&flagProjectID, &flagBranch))
+	rootCmd.AddCommand(upgradecmd.NewCmd(&Version))
 	rootCmd.AddCommand(constitutioncmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
 	createcmd.Register(rootCmd, &flagProjectID, &flagBranch, &flagFormat)
 }
