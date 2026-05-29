@@ -308,8 +308,8 @@ func printRecommendations(cmd *cobra.Command, result *ScanResult) {
 	}
 
 	for _, ep := range result.EntryPoints {
-		hasBackend := containsImport(ep.Imports, "echo", "gin", "chi", "net/http", "gorilla")
-		hasCLI := containsImport(ep.Imports, "cobra", "cli")
+		hasBackend := containsImport(ep.Imports, "echo", "gin", "chi", "net/http", "gorilla", "database/sql", "internal/server", "domain/")
+		hasCLI := containsImport(ep.Imports, "cobra", "/cli")
 		hasFramework := hasBackend || hasCLI
 
 		if !hasFramework {
