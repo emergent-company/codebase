@@ -9,7 +9,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 		Use:   "analyze",
 		Short: "Analyze codebase structure",
 	}
-	cmd.PersistentFlags().StringVar(&flagApp, "app", "", "Filter to a specific app (name from .codebase.yml apps section)")
+	cmd.PersistentFlags().StringVar(&flagApp, "app", "", "Filter to a specific app (key from .codebase.yml apps section, e.g. \"api-server\")")
 	cmd.AddCommand(newTreeCmd(flagProjectID, flagBranch, flagFormat, &flagApp))
 	cmd.AddCommand(newUMLCmd(flagProjectID, flagBranch, flagFormat, &flagApp))
 	cmd.AddCommand(newScenariosCmd(flagProjectID, flagBranch, flagFormat, &flagApp))
