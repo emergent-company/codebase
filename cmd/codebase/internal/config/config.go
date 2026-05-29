@@ -98,7 +98,11 @@ type Client struct {
 // New creates a configured Client. flagProjectID overrides all other sources.
 func New(flagProjectID, flagBranch string) (*Client, error) {
 	yml, _ := findAndParseYML()
-	if yml != nil && yml.APIKey != "" {
+
+	// Resolve API key: CODEBASE_API_KEY > .codebase.yml api_key.
+	if ak := os.Getenv("CODEBASE_API_KEY"); ak != "" {
+		os.Setenv("MEMORY_API_KEY", ak)
+	} else if yml != nil && yml.APIKey != "" {
 		if err := os.Setenv("MEMORY_API_KEY", yml.APIKey); err != nil {
 			return nil, fmt.Errorf("exporting api_key from .codebase.yml: %w", err)
 		}
@@ -117,7 +121,7 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 
 	projectID := flagProjectID
 	if projectID == "" {
-		projectID = os.Getenv("MEMORY_PROJECT_ID")
+		projectID = os.Getenv("CODEBASE_PROJECT_ID")
 	}
 
 	if projectID == "" {

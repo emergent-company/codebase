@@ -53,8 +53,8 @@ var rootCmd = &cobra.Command{
 	Version: Version,
 	Long: `codebase — populate, audit, and explore the Memory knowledge graph for your codebase.
 
-Auth: reads from ~/.memory/config.yaml, .env.local, or MEMORY_API_KEY env var.
-Project: reads from .codebase.yml (project_id or project name), or MEMORY_PROJECT_ID.
+Auth: reads from CODEBASE_API_KEY env var, .codebase.yml api_key, or ~/.memory/config.yaml.
+Project: reads from CODEBASE_PROJECT_ID env var, .codebase.yml project_id or project name.
 
 Examples:
   codebase sync routes          # populate APIEndpoint objects from route files
