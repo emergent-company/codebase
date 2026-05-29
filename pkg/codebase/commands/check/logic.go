@@ -125,6 +125,10 @@ func RunLogic(ctx context.Context, g graph.GraphClient, opts *LogicOptions, out 
 			if strings.ToLower(sync.StrProp(d, "type")) == "frontend" {
 				continue
 			}
+			// Scenario-type domains don't have their own endpoints
+			if strings.ToLower(sync.StrProp(d, "type")) == "scenario" {
+				continue
+			}
 			name := strings.ToLower(sync.StrProp(d, "name"))
 			if len(epByDomain[name]) == 0 {
 				add("DOMAIN_NO_ENDPOINTS", name, name, "domain has no APIEndpoints", 2)
@@ -135,6 +139,10 @@ func RunLogic(ctx context.Context, g graph.GraphClient, opts *LogicOptions, out 
 	if checkEnabled("DOMAIN_NO_SERVICE") {
 		for _, d := range domains {
 			if strings.ToLower(sync.StrProp(d, "type")) == "frontend" {
+				continue
+			}
+			// Scenario-type domains are realized by code domains, not their own services
+			if strings.ToLower(sync.StrProp(d, "type")) == "scenario" {
 				continue
 			}
 			name := strings.ToLower(sync.StrProp(d, "name"))

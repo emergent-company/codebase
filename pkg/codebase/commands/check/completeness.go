@@ -68,6 +68,7 @@ func RunCompleteness(ctx context.Context, g graph.GraphClient, opts *Completenes
 		"has_feature", "compares_on", "evaluated_by", "uses_pricing",
 		"provides_integration", "exposes_gap", "responds_to",
 		"closes_gap", "captures_trend", "impacts", "compares_against", "drives",
+		"realizes",
 	}
 	relCount := make(map[string]int)
 	allRels := make([]*sdkgraph.GraphRelationship, 0)
@@ -125,14 +126,23 @@ func RunCompleteness(ctx context.Context, g graph.GraphClient, opts *Completenes
 	for _, d := range domains {
 		domainIDs[d.EntityID] = true
 	}
-	domHasSvc := make(map[string]bool)
+	domHasSvc := make(map[string]bool)      // service belongs_to domain
+	domRealizes := make(map[string]bool)     // functional domain realizes code domain
+	domIsScenario := make(map[string]bool)   // domain type=scenario
+	for _, d := range domains {
+		if strings.ToLower(graph.StrProp(d, "type")) == "scenario" {
+			domIsScenario[d.EntityID] = true
+		}
+	}
 	for _, r := range allRels {
 		if r.Type == "belongs_to" && domainIDs[r.DstID] {
 			domHasSvc[r.DstID] = true
 		}
+		if r.Type == "realizes" && domainIDs[r.SrcID] {
+			domRealizes[r.SrcID] = true
+		}
 	}
 
-	// Compute health scores
 	scHealth := &CategoryHealth{
 		Total:  len(scenarios),
 		Linked: countTrue(scenarios, hasStep),
@@ -150,10 +160,10 @@ func RunCompleteness(ctx context.Context, g graph.GraphClient, opts *Completenes
 	}
 	domHealth := &CategoryHealth{
 		Total:  len(domains),
-		Linked: countTrueByID(domains, domHasSvc),
-		Label:  "domains with service",
+		Linked: countDomainLinked(domains, domHasSvc, domIsScenario, domRealizes),
+		Label:  "domains with service or realizes",
 	}
-
+	
 	scHealth.Score = pct(scHealth.Total, scHealth.Linked)
 	epHealth.Score = pct(epHealth.Total, epHealth.Linked)
 	svcHealth.Score = pct(svcHealth.Total, svcHealth.Linked)
@@ -374,6 +384,21 @@ func countTrueByID(objs []*sdkgraph.GraphObject, linked map[string]bool) int {
 	n := 0
 	for _, o := range objs {
 		if linked[o.EntityID] {
+			n++
+		}
+	}
+	return n
+}
+
+// countDomainLinked counts domains that are either:
+// - backed by a service (code domains via belongs_to)
+// - scenario-type domains with a realizes relationship to a code domain
+func countDomainLinked(domains []*sdkgraph.GraphObject, hasService, isScenario, hasRealizes map[string]bool) int {
+	n := 0
+	for _, d := range domains {
+		if hasService[d.EntityID] {
+			n++
+		} else if isScenario[d.EntityID] && hasRealizes[d.EntityID] {
 			n++
 		}
 	}

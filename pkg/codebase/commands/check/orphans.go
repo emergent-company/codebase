@@ -37,6 +37,7 @@ func RunOrphans(ctx context.Context, g graph.GraphClient, opts *OrphanOptions, o
 		"has_feature", "compares_on", "evaluated_by", "uses_pricing",
 		"provides_integration", "exposes_gap", "responds_to",
 		"closes_gap", "captures_trend", "impacts", "compares_against", "drives",
+		"realizes",
 	}
 	hasAnyRel := make(map[string]bool)
 	for _, rt := range relTypes {
