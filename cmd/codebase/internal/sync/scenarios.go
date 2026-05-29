@@ -69,7 +69,7 @@ type scenariosOptions struct {
 	verbose  bool
 }
 
-func newScenariosCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newScenariosCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	opts := &scenariosOptions{}
 	cwd, _ := os.Getwd()
 
@@ -94,7 +94,14 @@ Workflow:
   2. Edit .codebase/scenarios.yml         # refine scenarios and steps
   3. codebase sync scenarios --sync       # push to graph`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runScenarios(opts, flagProjectID, flagBranch, flagFormat)
+			// When --app is given, resolve repo to the app's root_path if --repo was not explicitly set
+			if *flagApp != "" && !cmd.Flags().Changed("repo") {
+				app := config.FindApp(*flagApp)
+				if app != nil && app.RootPath != "" {
+					opts.repo = filepath.Join(cwd, app.RootPath)
+				}
+			}
+			return runScenarios(opts, flagProjectID, flagBranch, flagFormat, flagApp)
 		},
 	}
 
@@ -109,7 +116,7 @@ Workflow:
 	return cmd
 }
 
-func runScenarios(opts *scenariosOptions, flagProjectID *string, flagBranch *string, flagFormat *string) error {
+func runScenarios(opts *scenariosOptions, flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) error {
 	yml := config.LoadYML()
 	absRoot, err := filepath.Abs(opts.repo)
 	if err != nil {
@@ -158,6 +165,9 @@ func runScenarios(opts *scenariosOptions, flagProjectID *string, flagBranch *str
 		return err
 	}
 
+	// Resolve app scope for domain filtering
+	scope := resolveAppScope(context.Background(), c.Graph, *flagApp)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -188,6 +198,10 @@ func runScenarios(opts *scenariosOptions, flagProjectID *string, flagBranch *str
 	// Diff
 	var toCreateScen, toUpdateScen, upToDateScen []scenRecord
 	for _, s := range def.Scenarios {
+		// Filter by app scope
+		if !scope.domainPasses(s.Domain) {
+			continue
+		}
 		key := s.Key
 		if key == "" {
 			key = scenarioKey(s.Domain, s.Title)

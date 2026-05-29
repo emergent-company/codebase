@@ -36,7 +36,7 @@ type actionsOptions struct {
 	defines bool
 }
 
-func newActionsCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newActionsCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	opts := &actionsOptions{}
 	cwd, _ := os.Getwd()
 
@@ -59,6 +59,13 @@ Configure in .codebase.yml:
 Or pass flags directly:
   codebase sync actions --glob "apps/web/src/store/**/*.ts" --sync`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// When --app is given, resolve repo to the app's root_path if --repo was not explicitly set
+			if *flagApp != "" && !cmd.Flags().Changed("repo") {
+				app := config.FindApp(*flagApp)
+				if app != nil && app.RootPath != "" {
+					opts.repo = filepath.Join(cwd, app.RootPath)
+				}
+			}
 			return runActions(opts, flagProjectID, flagBranch, flagFormat)
 		},
 	}

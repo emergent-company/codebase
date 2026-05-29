@@ -2,6 +2,8 @@ package seedcmd
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 
 	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
 	"github.com/mkucharz/codebase/cmd/codebase/internal/graph"
@@ -9,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newEntitiesCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newEntitiesCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var (
 		flagRepo    string
 		flagGlob    string
@@ -17,6 +19,7 @@ func newEntitiesCmd(flagProjectID *string, flagBranch *string, flagFormat *strin
 		flagDryRun  bool
 		flagVerbose bool
 	)
+	cwd, _ := os.Getwd()
 
 	cmd := &cobra.Command{
 		Use:   "entities",
@@ -26,6 +29,15 @@ func newEntitiesCmd(flagProjectID *string, flagBranch *string, flagFormat *strin
 			if err != nil {
 				return err
 			}
+
+			// When --app is given, set --repo to the app's root_path if --repo was not explicitly set
+			if *flagApp != "" && !cmd.Flags().Changed("repo") {
+				app := config.FindApp(*flagApp)
+				if app != nil && app.RootPath != "" {
+					flagRepo = filepath.Join(cwd, app.RootPath)
+				}
+			}
+
 			adapter := graph.NewSDKAdapter(cfg.Graph)
 			return cbseed.RunEntities(context.Background(), adapter, &cbseed.EntitiesOptions{
 				Repo:    flagRepo,

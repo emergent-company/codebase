@@ -3,6 +3,7 @@ package synccmd
 import (
 	"context"
 	"os"
+	"path/filepath"
 
 	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
 	"github.com/mkucharz/codebase/cmd/codebase/internal/graph"
@@ -11,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newRoutesCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newRoutesCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	opts := &cbsync.RoutesOptions{}
 	cwd, _ := os.Getwd()
 
@@ -19,9 +20,20 @@ func newRoutesCmd(flagProjectID *string, flagBranch *string, flagFormat *string)
 		Use:   "routes",
 		Short: "Populate APIEndpoint metadata from route files",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Resolve app scope
 			c, err := config.New(*flagProjectID, *flagBranch)
 			if err != nil {
 				return err
+			}
+
+			// When --app is given, resolve repo to the app's root_path if --repo was not explicitly set
+			if *flagApp != "" {
+				if !cmd.Flags().Changed("repo") {
+					app := config.FindApp(*flagApp)
+					if app != nil && app.RootPath != "" {
+						opts.Repo = filepath.Join(cwd, app.RootPath)
+					}
+				}
 			}
 			adapter := graph.NewSDKAdapter(c.Graph)
 			yml := config.LoadYML()

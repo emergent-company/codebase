@@ -36,7 +36,7 @@ type viewsOptions struct {
 	deps    bool
 }
 
-func newViewsCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newViewsCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	opts := &viewsOptions{}
 	cwd, _ := os.Getwd()
 
@@ -59,6 +59,13 @@ Configure in .codebase.yml:
 Or pass flags directly:
   codebase sync views --glob "apps/web/src/views/**/*.tsx" --routes apps/web/src/routes.ts --sync`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// When --app is given, resolve repo to the app's root_path if --repo was not explicitly set
+			if *flagApp != "" && !cmd.Flags().Changed("repo") {
+				app := config.FindApp(*flagApp)
+				if app != nil && app.RootPath != "" {
+					opts.repo = filepath.Join(cwd, app.RootPath)
+				}
+			}
 			return runViews(opts, flagProjectID, flagBranch, flagFormat)
 		},
 	}

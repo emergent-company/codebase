@@ -27,7 +27,7 @@ type middlewareOptions struct {
 	routeGlob string
 }
 
-func newMiddlewareCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newMiddlewareCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	opts := &middlewareOptions{}
 	cwd, _ := os.Getwd()
 
@@ -35,6 +35,13 @@ func newMiddlewareCmd(flagProjectID *string, flagBranch *string, flagFormat *str
 		Use:   "middleware",
 		Short: "Wire Middleware→APIEndpoint applies_to relationships + scopes",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// When --app is given, resolve repo to the app's root_path if --repo was not explicitly set
+			if *flagApp != "" && !cmd.Flags().Changed("repo") {
+				app := config.FindApp(*flagApp)
+				if app != nil && app.RootPath != "" {
+					opts.repo = filepath.Join(cwd, app.RootPath)
+				}
+			}
 			return runMiddleware(opts, flagProjectID, flagBranch, flagFormat)
 		},
 	}

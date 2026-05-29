@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newExposesCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newExposesCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var (
 		flagDryRun  bool
 		flagCleanup bool
@@ -26,7 +26,7 @@ func newExposesCmd(flagProjectID *string, flagBranch *string, flagFormat *string
 			if err != nil {
 				return err
 			}
-			return runExposes(cfg.SDK, flagDryRun, flagCleanup)
+			return runExposes(cfg.SDK, flagDryRun, flagCleanup, flagApp)
 		},
 	}
 
@@ -36,9 +36,12 @@ func newExposesCmd(flagProjectID *string, flagBranch *string, flagFormat *string
 	return cmd
 }
 
-func runExposes(client *sdk.Client, dryRun, cleanup bool) error {
+func runExposes(client *sdk.Client, dryRun, cleanup bool, flagApp *string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
+
+	// Resolve app scope for domain filtering
+	scope := resolveAppScope(ctx, client.Graph, *flagApp)
 
 	services, err := listAll(ctx, client.Graph, "Service")
 	if err != nil {
@@ -59,6 +62,10 @@ func runExposes(client *sdk.Client, dryRun, cleanup bool) error {
 	var toCreate []sdkgraph.CreateRelationshipRequest
 	for _, ep := range endpoints {
 		domain, _ := ep.Properties["domain"].(string)
+		// Filter by app scope
+		if !scope.domainPasses(domain) {
+			continue
+		}
 		if svcID, ok := serviceByDomain[domain]; ok {
 			toCreate = append(toCreate, sdkgraph.CreateRelationshipRequest{
 				Type: "exposes", SrcID: svcID, DstID: ep.EntityID, Upsert: true,
