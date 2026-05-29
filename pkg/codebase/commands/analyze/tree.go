@@ -25,6 +25,7 @@ func RunTree(ctx context.Context, gc graph.GraphClient, w io.Writer, domainFilte
 		scenarios   []*sdkgraph.GraphObject
 		btRels      []*sdkgraph.GraphRelationship
 		exposesRels []*sdkgraph.GraphRelationship
+		occursRels  []*sdkgraph.GraphRelationship
 		mu          sync.Mutex
 		wg          sync.WaitGroup
 		fetchErr    error
@@ -48,14 +49,15 @@ func RunTree(ctx context.Context, gc graph.GraphClient, w io.Writer, domainFilte
 	fetch(func() error { r, e := graph.ListAll(ctx, gc, schema.TypeScenario); scenarios = r; return e })
 	fetch(func() error { r, e := graph.ListAllRels(ctx, gc, schema.RelBelongsTo); btRels = r; return e })
 	fetch(func() error { r, e := graph.ListAllRels(ctx, gc, schema.RelExposes); exposesRels = r; return e })
+	fetch(func() error { r, e := graph.ListAllRels(ctx, gc, schema.RelOccursIn); occursRels = r; return e })
 
 	wg.Wait()
 	if fetchErr != nil {
 		return fetchErr
 	}
 
-	fmt.Fprintf(w, "  Domains:%d Endpoints:%d Services:%d Scenarios:%d belongs_to:%d exposes:%d\n",
-		len(domains), len(endpoints), len(services), len(scenarios), len(btRels), len(exposesRels))
+	fmt.Fprintf(w, "  Domains:%d Endpoints:%d Services:%d Scenarios:%d belongs_to:%d exposes:%d occurs_in:%d\n",
+		len(domains), len(endpoints), len(services), len(scenarios), len(btRels), len(exposesRels), len(occursRels))
 
 	domainByID := map[string]*sdkgraph.GraphObject{}
 	domainSlugs := []string{}
@@ -140,7 +142,47 @@ func RunTree(ctx context.Context, gc graph.GraphClient, w io.Writer, domainFilte
 	}
 
 	scenBySlug := map[string][]ScenarioInfo{}
+	scenAssigned := map[string]bool{}
+
+	// First, assign scenarios via occurs_in relationships (most authoritative)
+	scnByID := map[string]*sdkgraph.GraphObject{}
 	for _, sc := range scenarios {
+		scnByID[sc.EntityID] = sc
+	}
+	for _, r := range occursRels {
+		sc, ok := scnByID[r.SrcID]
+		if !ok {
+			continue
+		}
+		domain, ok := domainByID[r.DstID]
+		if !ok {
+			continue
+		}
+		slug := domainKeySlug(graph.DerefKey(domain.Key))
+		scKey := graph.DerefKey(sc.Key)
+		statusStr := graph.DerefKey(sc.Status)
+		if statusStr == "" {
+			statusStr = graph.StrProp(sc, "status")
+		}
+		switch statusStr {
+		case "planned":
+			statusStr = "planned"
+		case "":
+			statusStr = "implemented"
+		}
+		scenBySlug[slug] = append(scenBySlug[slug], ScenarioInfo{
+			Name:   graph.StrProp(sc, "name"),
+			Status: statusStr,
+			Key:    scKey,
+		})
+		scenAssigned[sc.EntityID] = true
+	}
+
+	// Fall back to key-prefix / domain-property matching for unassigned scenarios
+	for _, sc := range scenarios {
+		if scenAssigned[sc.EntityID] {
+			continue
+		}
 		scKey := graph.DerefKey(sc.Key)
 		slug := scenarioDomainSlug(scKey, domainSlugs)
 		if slug == "" {
@@ -264,7 +306,7 @@ type Report struct {
 }
 
 func domainKeySlug(key string) string {
-	return strings.TrimPrefix(key, "domain-")
+	return strings.TrimPrefix(strings.TrimPrefix(key, "dom-"), "domain-")
 }
 
 var scenarioKeyAliases = map[string]string{
@@ -276,10 +318,14 @@ var scenarioKeyAliases = map[string]string{
 }
 
 func scenarioDomainSlug(key string, domainSlugs []string) string {
-	if !strings.HasPrefix(key, "s-") {
+	rest := key
+	if strings.HasPrefix(rest, "scn-") {
+		rest = rest[4:]
+	} else if strings.HasPrefix(rest, "s-") {
+		rest = rest[2:]
+	} else {
 		return ""
 	}
-	rest := key[2:]
 	for _, slug := range domainSlugs {
 		if rest == slug || strings.HasPrefix(rest, slug+"-") {
 			return slug
