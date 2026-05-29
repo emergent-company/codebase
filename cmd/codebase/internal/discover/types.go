@@ -93,3 +93,55 @@ type EntryPoint struct {
 type AppsFile struct {
 	Apps []config.AppYML `yaml:"apps" json:"apps"`
 }
+
+// GraphGuide is the structured LLM guidance for populating the knowledge graph.
+// Output via `codebase discover --guide`.
+type GraphGuide struct {
+	Version            string                  `json:"version"`
+	Workflow           []WorkflowStep          `json:"workflow"`
+	ObjectTypes        []ObjectTypeGuide       `json:"object_types"`
+	RelationshipTypes  []RelationshipTypeGuide `json:"relationship_types"`
+	NamingConventions  NamingGuide            `json:"naming_conventions"`
+	BatchExample       BatchExample           `json:"batch_example"`
+	Principles         []string               `json:"principles"`
+}
+
+// WorkflowStep is a phase in the recommended graph population order.
+type WorkflowStep struct {
+	Phase    int      `json:"phase"`
+	Name     string   `json:"name"`
+	Action   string   `json:"action"`
+	Commands []string `json:"commands"`
+}
+
+// ObjectTypeGuide describes a graph object type and how to create it.
+type ObjectTypeGuide struct {
+	Type          string            `json:"type"`
+	Key           string            `json:"key"`
+	Summary       string            `json:"summary"`
+	Subcommand    string            `json:"subcommand"`
+	Properties    map[string]string `json:"properties"`
+	Relationships []string          `json:"relationships,omitempty"`
+}
+
+// RelationshipTypeGuide describes a relationship type.
+type RelationshipTypeGuide struct {
+	Type        string `json:"type"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	Description string `json:"description"`
+}
+
+// NamingGuide documents key prefix conventions.
+type NamingGuide struct {
+	KeyFormat  string            `json:"key_format"`
+	PrefixMap  map[string]string `json:"prefix_map"`
+	Rules      []string          `json:"rules"`
+}
+
+// BatchExample shows how to create objects in bulk.
+type BatchExample struct {
+	Description    string                   `json:"description"`
+	Operations     []map[string]interface{} `json:"operations"`
+	RelateCommands []string                 `json:"relate_commands"`
+}

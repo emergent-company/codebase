@@ -1,0 +1,158 @@
+package discovercmd
+
+// GraphGuide returns the structured LLM guidance for populating the graph.
+func GetGraphGuide() *GraphGuide {
+	workflow := []WorkflowStep{
+		{Phase: 1, Name: "Domains", Action: "Define bounded contexts — every object lives under a domain",
+			Commands: []string{
+				`codebase create domain <name> --slug <slug> --description "..." --upsert`,
+				`# Key: dom-<slug>  e.g. dom-user-management, dom-agent-runtime`,
+				`# Always create domains first — everything else belongs_to them.`,
+			}},
+		{Phase: 2, Name: "Services", Action: "Define service modules that implement domain logic",
+			Commands: []string{
+				`codebase graph create --type Service --key svc-<name> --properties '{"name":"...","description":"..."}' --upsert --json`,
+				`codebase graph relate --type belongs_to --from svc-<key> --to dom-<key>`,
+			}},
+		{Phase: 3, Name: "API Endpoints", Action: "Map HTTP endpoints to services",
+			Commands: []string{
+				`codebase create apiendpoint <handler> --method GET --path "/api/..." --domain <domain> --auth-required --upsert`,
+				`codebase graph relate --type exposes --from svc-<key> --to ep-<key>`,
+				`codebase graph relate --type belongs_to --from ep-<key> --to dom-<key>`,
+			}},
+		{Phase: 4, Name: "Scenarios & Steps", Action: "Define user workflows as ordered steps",
+			Commands: []string{
+				`codebase create scenario <name> --given "..." --when "..." --then "..." --upsert`,
+				`codebase create step --scenario scn-<key> --order 1 --description "..."`,
+				`codebase graph relate --type occurs_in --from scn-<key> --to dom-<key>`,
+				`codebase graph relate --type has_step --from scn-<key> --to step-<key>`,
+			}},
+		{Phase: 5, Name: "Actors", Action: "Define who interacts with the system",
+			Commands: []string{
+				`codebase graph create --type Actor --key act-<slug> --properties '{"name":"...","role":"human","type":"end-user"}' --upsert --json`,
+				`codebase graph relate --type handles --from act-<key> --to scn-<key>`,
+			}},
+		{Phase: 6, Name: "Source Files", Action: "Map source files to domains (traceability)",
+			Commands: []string{
+				`codebase create sourcefile <path> --path "apps/server/domain/x/handler.go" --language go --upsert`,
+				`codebase graph relate --type belongs_to --from sf-<key> --to dom-<key>`,
+			}},
+		{Phase: 7, Name: "Competitive Landscape", Action: "Track competitors and gaps (optional)",
+			Commands: []string{
+				`codebase create competitor <key> --name "..." --category personal-agent --status active --upsert`,
+				`codebase create competitorfeature --competitor cmp-<key> --capability-area "..." --upsert`,
+				`codebase create comparisonpoint --competitor cmp-<key> --feature "..." --assessment stronger --upsert`,
+				`codebase create featuregap --competitors-have-it "cmp-a,cmp-b" --impact high --upsert`,
+			}},
+	}
+
+	objects := []ObjectTypeGuide{
+		{Type: "Domain", Key: "dom-<slug>", Summary: "A bounded context or subsystem — the top-level organizational unit.",
+			Subcommand: `codebase create domain <name> --slug <slug> --description "..." [--app <app-key>]`,
+			Properties: map[string]string{"name": "required", "description": "required", "slug": "required", "app": "optional — for --app scoping"}},
+		{Type: "Service", Key: "svc-<name>", Summary: "A service module implementing business logic for a domain.",
+			Subcommand: `codebase graph create --type Service --key svc-<name> --properties '{"name":"...","description":"..."}' --upsert --json`,
+			Properties: map[string]string{"name": "required", "description": "required"},
+			Relationships: []string{"belongs_to (Service → Domain)"}},
+		{Type: "APIEndpoint", Key: "ep-<verb>-<resource>", Summary: "An HTTP endpoint exposed by a service.",
+			Subcommand: `codebase create apiendpoint <handler> --method GET --path "/api/..." --domain <domain> --auth-required --upsert`,
+			Properties: map[string]string{"method": "required", "path": "required", "handler": "required", "auth_required": "optional"},
+			Relationships: []string{"belongs_to (APIEndpoint → Domain)", "exposes (Service → APIEndpoint)"}},
+		{Type: "Scenario", Key: "scn-<slug>", Summary: "A user workflow or use case with ordered steps.",
+			Subcommand: `codebase create scenario <name> --given "..." --when "..." --then "..." --upsert`,
+			Properties: map[string]string{"name": "required", "description": "required"},
+			Relationships: []string{"occurs_in (Scenario → Domain)", "has_step (Scenario → ScenarioStep)", "handles (Actor → Scenario)"}},
+		{Type: "ScenarioStep", Key: "step-<scn-abbrev>-<N>", Summary: "A single ordered step within a scenario.",
+			Subcommand: `codebase create step --scenario scn-<key> --order 1 --description "User does X"`,
+			Properties: map[string]string{"description": "required", "order": "required"},
+			Relationships: []string{"has_step (Scenario → ScenarioStep)"}},
+		{Type: "Actor", Key: "act-<slug>", Summary: "A person, system, or agent interacting with the system.",
+			Subcommand: `codebase graph create --type Actor --key act-<slug> --properties '{"name":"...","role":"human","type":"end-user"}' --upsert --json`,
+			Properties: map[string]string{"name": "required", "role": "optional — human/system/agent", "type": "optional — end-user/admin/service/ai-agent"},
+			Relationships: []string{"handles (Actor → Scenario)"}},
+		{Type: "Context", Key: "ctx-<screen-name>", Summary: "A screen or view in the UI.",
+			Subcommand: `codebase create context <name> --route "/path" --context-type screen --upsert`,
+			Properties: map[string]string{"name": "required", "route": "required", "context_type": "optional — screen/modal/sidebar/section"},
+			Relationships: []string{"has_action (Context → Action)", "occurs_in (Context → Domain)"}},
+		{Type: "Action", Key: "act-<domain>-<verb>-<resource>", Summary: "A user action or store method.",
+			Subcommand: `codebase create action <name> --domain <domain> --type trigger --display-label "Save" --upsert`,
+			Properties: map[string]string{"name": "required", "domain": "required", "type": "optional — trigger/async/computed"},
+			Relationships: []string{"has_action (Context → Action)"}},
+		{Type: "UIComponent", Key: "ui-<name-slug>", Summary: "A reusable UI component.",
+			Subcommand: `codebase create uicomponent <name> --type composite --upsert`,
+			Properties: map[string]string{"name": "required", "type": "optional — primitive/composite/layout"}},
+		{Type: "SourceFile", Key: "sf-<app>-<path>", Summary: "A source file mapped to its domain.",
+			Subcommand: `codebase create sourcefile <path> --path "apps/server/domain/x/handler.go" --language go --upsert`,
+			Properties: map[string]string{"path": "required", "language": "optional — go/typescript/python"},
+			Relationships: []string{"belongs_to (SourceFile → Domain)"}},
+		{Type: "Competitor", Key: "cmp-<slug>", Summary: "A competitor product for competitive analysis.",
+			Subcommand: `codebase create competitor <key> --name "..." --category personal-agent --status active --open-source --upsert`,
+			Properties: map[string]string{"name": "required", "category": "optional", "status": "optional", "maturity": "optional", "is_open_source": "optional"}},
+		{Type: "CompetitorFeature", Key: "cf-<competitor>-<feature>", Summary: "A feature of a competitor.",
+			Subcommand: `codebase create competitorfeature --competitor cmp-<key> --capability-area "AI Chat" --core --upsert`,
+			Properties: map[string]string{"capability_area": "required", "is_core": "optional", "maturity_level": "optional"}},
+	}
+
+	rels := []RelationshipTypeGuide{
+		{Type: "belongs_to", From: "any child", To: "parent Domain", Description: "Hierarchical grouping. Used by: Service, APIEndpoint, Scenario, SourceFile, Context."},
+		{Type: "exposes", From: "Service", To: "APIEndpoint", Description: "A service exposes an HTTP endpoint."},
+		{Type: "handles", From: "Actor", To: "Scenario", Description: "An actor performs or is involved in a scenario."},
+		{Type: "has_step", From: "Scenario", To: "ScenarioStep", Description: "A scenario has ordered steps."},
+		{Type: "occurs_in", From: "Scenario/Context/Action", To: "Domain", Description: "A behavior or UI element occurs within a domain."},
+		{Type: "has_action", From: "Context", To: "Action", Description: "A context/screen has associated user actions."},
+		{Type: "includes", From: "any", To: "any", Description: "Generic composition/inclusion."},
+		{Type: "references", From: "any", To: "any", Description: "A reference between objects (weak link)."},
+		{Type: "requires", From: "any", To: "any", Description: "One object requires another (dependency)."},
+		{Type: "calls", From: "SourceFile/Action", To: "APIEndpoint/Action", Description: "Code-level invocation."},
+		{Type: "uses", From: "SourceFile/Action", To: "Service/APIEndpoint", Description: "Depends on at runtime."},
+		{Type: "tested_by", From: "APIEndpoint/Service", To: "SourceFile (test)", Description: "Test coverage mapping."},
+	}
+
+	return &GraphGuide{
+		Version: "2.2.0",
+		Workflow: workflow,
+		ObjectTypes: objects,
+		RelationshipTypes: rels,
+		NamingConventions: NamingGuide{
+			KeyFormat: "<prefix>-<kebab-slug>",
+			PrefixMap: map[string]string{
+				"Domain": "dom-", "Service": "svc-", "APIEndpoint": "ep-",
+				"Scenario": "scn-", "ScenarioStep": "step-", "Actor": "act-",
+				"Context": "ctx-", "Action": "act-", "UIComponent": "ui-",
+				"SourceFile": "sf-", "Competitor": "cmp-", "CompetitorFeature": "cf-",
+				"ComparisonPoint": "cp-", "FeatureGap": "fg-", "MarketTrend": "mt-",
+				"StrategicInitiative": "si-", "CapabilityMatrix": "cm-",
+			},
+			Rules: []string{
+				"Slugs are lowercase kebab-case (e.g. 'user-login', 'agent-runtime')",
+				"Auto-generated keys from `codebase create` follow conventions above",
+				"Manual keys from `codebase graph create --key` MUST follow prefix conventions",
+				"Use `codebase graph relate` for traversable edges — never `graph create --type Relationship`",
+			},
+		},
+		BatchExample: BatchExample{
+			Description: "For bulk operations, create a JSON file and use `codebase graph batch --file ops.json`",
+			Operations: []map[string]interface{}{
+				{"op": "create", "type": "Domain", "key": "dom-user-management", "properties": map[string]interface{}{"name": "User Management", "description": "User registration, auth, profile"}},
+				{"op": "create", "type": "Service", "key": "svc-auth", "properties": map[string]interface{}{"name": "Auth Service", "description": "Authentication and authorization"}},
+				{"op": "create", "type": "APIEndpoint", "key": "ep-post-login", "properties": map[string]interface{}{"name": "Login", "method": "POST", "path": "/api/auth/login"}},
+			},
+			RelateCommands: []string{
+				"codebase graph relate --type belongs_to --from svc-auth --to dom-user-management",
+				"codebase graph relate --type exposes --from svc-auth --to ep-post-login",
+				"codebase graph relate --type belongs_to --from ep-post-login --to dom-user-management",
+			},
+		},
+		Principles: []string{
+			"Every codebase is unique. Use `codebase discover --scan` to collect facts, then decide what to create.",
+			"Start with Domains (the big picture), then drill down: Services → APIEndpoints → Scenarios → Actors.",
+			"Prefer `codebase create <type>` subcommands — they auto-generate keys and handle prefix conventions.",
+			"Use `codebase graph create --key <key> --upsert --json` for types without subcommands (Service, Actor).",
+			"Use `codebase graph relate --from <key> --to <key> --type <type>` for traversable edges.",
+			"Never use `codebase graph create --type Relationship` — it creates non-traversable zombie objects.",
+			"Tag domains with the `app` property to enable `--app` scoping in check/analyze commands.",
+			"Run `codebase check logic` after population to verify consistency.",
+			"Every codebase is different. Let the scan facts guide what you create — don't force types that don't fit.",
+		},
+	}
+}

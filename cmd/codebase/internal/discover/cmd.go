@@ -19,6 +19,7 @@ func NewCmd(flagProjectID *string) *cobra.Command {
 	var rootDir string
 	var write bool
 	var scanMode bool
+	var guideMode bool
 	var autoMode bool
 	var appsFile string
 
@@ -31,6 +32,7 @@ or human uses to decide application types and write .codebase.yml.
 Modes:
   discover                  Show scan facts + recommendations
   discover --scan           Output raw structural facts as JSON (for LLM consumption)
+  discover --guide          Output structured graph population guide as JSON (schema, naming, workflow)
   discover --write          Write .codebase.yml from explicit app definitions
   discover --write --apps-file <file>  Write from a JSON/YAML app definitions file
   discover --auto           Legacy heuristic pattern detection (deprecated)
@@ -39,6 +41,7 @@ Modes:
 Examples:
   codebase discover                              # show facts + recommendations
   codebase discover --scan > /tmp/facts.json     # pipe facts to LLM
+  codebase discover --guide > /tmp/guide.json    # get graph population guide
   codebase discover --write --apps-file my-apps.json  # write explicit apps
 `,
 		SilenceErrors: true,
@@ -57,7 +60,12 @@ Examples:
 				}
 			}
 
-			// --- Mode 1: --scan (raw facts JSON) ---
+			// --- Mode 1: --guide (LLM graph population guide) ---
+			if guideMode {
+				return runGuide(cmd)
+			}
+
+			// --- Mode 2: --scan (raw facts JSON) ---
 			if scanMode {
 				return runScan(cmd, repoDir)
 			}
@@ -85,10 +93,19 @@ Examples:
 	cmd.Flags().StringVar(&rootDir, "dir", "", "Repository root directory (default: current directory)")
 	cmd.Flags().BoolVarP(&write, "write", "w", false, "Write apps section to .codebase.yml")
 	cmd.Flags().BoolVar(&scanMode, "scan", false, "Output raw structural facts as JSON (no classification)")
+	cmd.Flags().BoolVar(&guideMode, "guide", false, "Output LLM graph population guide as JSON (schema, naming, workflow)")
 	cmd.Flags().BoolVar(&autoMode, "auto", false, "Use legacy heuristic pattern detection (deprecated)")
 	cmd.Flags().StringVar(&appsFile, "apps-file", "", "Path to JSON/YAML file with app definitions (used with --write)")
 
 	return cmd
+}
+
+// runGuide outputs the structured LLM graph population guide as JSON.
+func runGuide(cmd *cobra.Command) error {
+	guide := GetGraphGuide()
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	return enc.Encode(guide)
 }
 
 // runScan outputs raw structural facts as JSON (LLM-consumable).
