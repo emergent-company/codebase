@@ -1,5 +1,8 @@
 // Package statuscmd implements the `codebase status` command — connection
 // health check and project statistics with per-type breakdowns.
+//
+// Uses only the Graph API (objects:read / relationships:read) — no
+// projects:read or schema-registry scopes needed.
 package statuscmd
 
 import (
@@ -9,11 +12,14 @@ import (
 	"sort"
 
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
-	sdkregistry "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/schemaregistry"
-
 	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
 	"github.com/spf13/cobra"
 )
+
+type typeCount struct {
+	Type  string
+	Count int
+}
 
 func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 	cmd := &cobra.Command{
@@ -38,73 +44,91 @@ with per-type breakdowns for objects and relationships.`,
 				serverURL = "https://memory.emergent-company.ai"
 			}
 
-			// --- Project name ---
-			// Resolved from .codebase.yml during config loading; no API call needed.
+			// Project name from .codebase.yml only — no API call.
 			projectName := cfg.ProjectName
 
-			// --- Object types (with counts) ---
-			type obTypeCount struct {
-				Type  string
-				Count int
-			}
-			type relTypeCount struct {
-				Type  string
-				Count int
-			}
-
-			var objTypes []obTypeCount
-			allRelTypes := make(map[string]bool)
-
-			entries, err := cfg.SchemaRegistry.GetProjectTypes(ctx, cfg.ProjectID, &sdkregistry.ListTypesOptions{})
-			if err == nil {
-				for _, e := range entries {
-					if e.ObjectCount > 0 {
-						objTypes = append(objTypes, obTypeCount{Type: e.Type, Count: e.ObjectCount})
-					}
-					// Collect all outgoing relationship types for this object type
-					for _, rel := range e.OutgoingRelationships {
-						allRelTypes[rel.Type] = true
+			// --- Discover types by sampling objects ---
+			sampleObjs, _ := cfg.Graph.ListObjects(ctx, &sdkgraph.ListObjectsOptions{
+				Limit: 500,
+				Order: "desc",
+			})
+			seenObjTypes := make(map[string]bool)
+			if sampleObjs != nil {
+				for _, o := range sampleObjs.Items {
+					if o.Type != "" {
+						seenObjTypes[o.Type] = true
 					}
 				}
 			}
-			// If GetProjectTypes fails (e.g. no schema-registry scope), fall back to total count
-			if len(objTypes) == 0 {
-				totalObjs, _ := cfg.Graph.CountObjects(ctx, &sdkgraph.CountObjectsOptions{})
-				if totalObjs > 0 {
-					objTypes = []obTypeCount{{Type: "(all types)", Count: totalObjs}}
+
+			// --- Count per object type ---
+			var objTypes []typeCount
+			objTypeNames := make([]string, 0, len(seenObjTypes))
+			for t := range seenObjTypes {
+				objTypeNames = append(objTypeNames, t)
+			}
+			sort.Strings(objTypeNames)
+
+			totalObj := 0
+			for _, t := range objTypeNames {
+				n, err := cfg.Graph.CountObjects(ctx, &sdkgraph.CountObjectsOptions{Type: t})
+				if err == nil && n > 0 {
+					objTypes = append(objTypes, typeCount{Type: t, Count: n})
+					totalObj += n
 				}
+			}
+
+			// Fallback: if no objects found or sampling returned nothing, try total count
+			if totalObj == 0 {
+				totalObj, _ = cfg.Graph.CountObjects(ctx, &sdkgraph.CountObjectsOptions{})
 			}
 
 			sort.Slice(objTypes, func(i, j int) bool {
 				return objTypes[i].Count > objTypes[j].Count
 			})
 
-			// --- Relationship counts by type ---
-			var relCounts []relTypeCount
-			// Sort relationship types for deterministic output
-			relTypeNames := make([]string, 0, len(allRelTypes))
-			for t := range allRelTypes {
+			// --- Discover relationship types by sampling ---
+			sampleRels, _ := cfg.Graph.ListRelationships(ctx, &sdkgraph.ListRelationshipsOptions{
+				Limit: 500,
+			})
+			seenRelTypes := make(map[string]bool)
+			if sampleRels != nil {
+				for _, r := range sampleRels.Items {
+					if r.Type != "" {
+						seenRelTypes[r.Type] = true
+					}
+				}
+			}
+
+			// --- Count per relationship type ---
+			var relTypes []typeCount
+			relTypeNames := make([]string, 0, len(seenRelTypes))
+			for t := range seenRelTypes {
 				relTypeNames = append(relTypeNames, t)
 			}
 			sort.Strings(relTypeNames)
 
-			for _, rt := range relTypeNames {
-				if rels, err := cfg.Graph.ListRelationships(ctx, &sdkgraph.ListRelationshipsOptions{
-					Type:  rt,
+			totalRel := 0
+			for _, t := range relTypeNames {
+				rels, err := cfg.Graph.ListRelationships(ctx, &sdkgraph.ListRelationshipsOptions{
+					Type:  t,
 					Limit: 1,
-				}); err == nil && rels.Total > 0 {
-					relCounts = append(relCounts, relTypeCount{Type: rt, Count: rels.Total})
-				}
-			}
-			// If no relationship types collected via schema registry, try total
-			if len(relCounts) == 0 {
-				if rels, err := cfg.Graph.ListRelationships(ctx, &sdkgraph.ListRelationshipsOptions{Limit: 1}); err == nil && rels.Total > 0 {
-					relCounts = append(relCounts, relTypeCount{Type: "(all types)", Count: rels.Total})
+				})
+				if err == nil && rels.Total > 0 {
+					relTypes = append(relTypes, typeCount{Type: t, Count: rels.Total})
+					totalRel += rels.Total
 				}
 			}
 
-			sort.Slice(relCounts, func(i, j int) bool {
-				return relCounts[i].Count > relCounts[j].Count
+			// Fallback: if no relationship types found, try total
+			if totalRel == 0 {
+				if rels, err := cfg.Graph.ListRelationships(ctx, &sdkgraph.ListRelationshipsOptions{Limit: 1}); err == nil {
+					totalRel = rels.Total
+				}
+			}
+
+			sort.Slice(relTypes, func(i, j int) bool {
+				return relTypes[i].Count > relTypes[j].Count
 			})
 
 			// --- Print ---
@@ -123,12 +147,8 @@ with per-type breakdowns for objects and relationships.`,
 			fmt.Fprintf(out, "\n")
 
 			// Objects by type
-			totalObj := 0
-			for _, ot := range objTypes {
-				totalObj += ot.Count
-			}
 			fmt.Fprintf(out, "Objects:    %d\n", totalObj)
-			if len(objTypes) > 0 && len(objTypes[0].Type) != len("(all types)") {
+			if len(objTypes) > 0 {
 				maxW := 0
 				for _, ot := range objTypes {
 					if len(ot.Type) > maxW {
@@ -142,19 +162,15 @@ with per-type breakdowns for objects and relationships.`,
 			fmt.Fprintf(out, "\n")
 
 			// Relationships by type
-			totalRel := 0
-			for _, rt := range relCounts {
-				totalRel += rt.Count
-			}
 			fmt.Fprintf(out, "Relations:  %d\n", totalRel)
-			if len(relCounts) > 0 && len(relCounts[0].Type) != len("(all types)") {
+			if len(relTypes) > 0 {
 				maxW := 0
-				for _, rt := range relCounts {
+				for _, rt := range relTypes {
 					if len(rt.Type) > maxW {
 						maxW = len(rt.Type)
 					}
 				}
-				for _, rt := range relCounts {
+				for _, rt := range relTypes {
 					fmt.Fprintf(out, "  %-*s  %d\n", maxW, rt.Type, rt.Count)
 				}
 			}
