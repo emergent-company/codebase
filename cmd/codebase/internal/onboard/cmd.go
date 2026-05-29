@@ -72,44 +72,62 @@ func runOnboard(flagProjectID *string, flagBranch *string, repo string, dryRun b
 
 	exe, _ := os.Executable()
 
+	// ── Detect app types ───────────────────────────────────────────────────────
+	appTypes := config.AppTypes()
+	hasBackend := config.HasAppType("backend")
+	isCLI := config.HasAppType("cli")
+	hasAPI := hasBackend || len(appTypes) == 0 // default to backend if no config
+
 	// ── Snapshot before ───────────────────────────────────────────────────────
-	before := graphSnapshot(ctx, c.Graph)
+	before := graphSnapshot(ctx, c.Graph, appTypes)
 
 	var results []stepResult
 
-	// ── Step 1: sync routes ───────────────────────────────────────────────────
-	args := []string{"sync", "routes", "--repo", repo}
-	if dryRun {
-		args = append(args, "--dry-run")
+	// ── Step 1: sync routes (skip for CLI/library) ─────────────────────────────
+	if hasAPI {
+		args := []string{"sync", "routes", "--repo", repo}
+		if dryRun {
+			args = append(args, "--dry-run")
+		}
+		r := runStep("sync routes", exe, args...)
+		results = append(results, r)
+	} else {
+		results = append(results, stepResult{Name: "sync routes", Status: "skipped", Detail: "no backend app type detected"})
 	}
-	r := runStep("sync routes", exe, args...)
-	results = append(results, r)
 
-	// ── Step 2: sync middleware ───────────────────────────────────────────────
-	args = []string{"sync", "middleware", "--repo", repo}
-	if dryRun {
-		args = append(args, "--dry-run")
+	// ── Step 2: sync middleware (skip for CLI/library) ─────────────────────────
+	if hasAPI {
+		args := []string{"sync", "middleware", "--repo", repo}
+		if dryRun {
+			args = append(args, "--dry-run")
+		}
+		r := runStep("sync middleware", exe, args...)
+		results = append(results, r)
+	} else {
+		results = append(results, stepResult{Name: "sync middleware", Status: "skipped", Detail: "no backend app type detected"})
 	}
-	r = runStep("sync middleware", exe, args...)
-	results = append(results, r)
 
-	// ── Step 3: sync files ────────────────────────────────────────────────────
-	args = []string{"sync", "files", "--repo", repo}
+	// ── Step 3: sync files (universal) ───────────────────────────────────────
+	args := []string{"sync", "files", "--repo", repo}
 	if !dryRun {
 		args = append(args, "--sync")
 	}
-	r = runStep("sync files", exe, args...)
+	r := runStep("sync files", exe, args...)
 	results = append(results, r)
 
-	// ── Step 4: seed exposes ──────────────────────────────────────────────────
-	args = []string{"seed", "exposes"}
-	if dryRun {
-		args = append(args, "--dry-run")
+	// ── Step 4: seed exposes (skip for CLI/library) ────────────────────────────
+	if hasAPI {
+		args = []string{"seed", "exposes"}
+		if dryRun {
+			args = append(args, "--dry-run")
+		}
+		r = runStep("seed exposes", exe, args...)
+		results = append(results, r)
+	} else {
+		results = append(results, stepResult{Name: "seed exposes", Status: "skipped", Detail: "no backend app type detected"})
 	}
-	r = runStep("seed exposes", exe, args...)
-	results = append(results, r)
 
-	// ── Step 5: constitution ──────────────────────────────────────────────────
+	// ── Step 5: constitution (type-aware rules) ────────────────────────────────
 	constCount := countObjects(ctx, c.Graph, "Constitution")
 	if constCount > 0 {
 		results = append(results, stepResult{
@@ -118,34 +136,35 @@ func runOnboard(flagProjectID *string, flagBranch *string, repo string, dryRun b
 			Detail: "constitution-v1 already exists",
 		})
 	} else if !dryRun {
-		if err := createConstitution(ctx, c.Graph, purpose); err != nil {
+		rulesToCreate := selectRules(appTypes)
+		if err := createConstitution(ctx, c.Graph, purpose, rulesToCreate); err != nil {
 			results = append(results, stepResult{Name: "constitution", Status: "error", Detail: err.Error()})
 		} else {
 			results = append(results, stepResult{
 				Name:    "constitution",
 				Status:  "ok",
-				Detail:  fmt.Sprintf("created constitution-v1 with %d starter rules", len(starterRules)),
-				Created: 1 + len(starterRules),
+				Detail:  fmt.Sprintf("created constitution-v1 with %d starter rules", len(rulesToCreate)),
+				Created: 1 + len(rulesToCreate),
 			})
 		}
 	} else {
 		results = append(results, stepResult{
 			Name:   "constitution",
 			Status: "ok",
-			Detail: fmt.Sprintf("would create constitution-v1 with %d starter rules", len(starterRules)),
+			Detail: fmt.Sprintf("would create constitution-v1 with %d rules (app types: %v)", len(selectRules(appTypes)), appTypes),
 		})
 	}
 
-	// ── Step 6: install skill ─────────────────────────────────────────────────
+	// ── Step 6: install skill (universal) ──────────────────────────────────────
 	args = []string{"skills", "install"}
 	r = runStep("skills install", exe, args...)
 	results = append(results, r)
 
 	// ── Snapshot after ────────────────────────────────────────────────────────
-	after := graphSnapshot(ctx, c.Graph)
+	after := graphSnapshot(ctx, c.Graph, appTypes)
 
 	// ── Report ────────────────────────────────────────────────────────────────
-	printReport(results, before, after, dryRun)
+	printReport(results, before, after, dryRun, hasAPI, isCLI)
 	return nil
 }
 
@@ -164,15 +183,17 @@ type snapshot struct {
 	Files     int
 	Services  int
 	Domains   int
+	Commands  int // CLI: command/subcommand count (future)
 }
 
-func graphSnapshot(ctx context.Context, gc *sdkgraph.Client) snapshot {
-	return snapshot{
+func graphSnapshot(ctx context.Context, gc *sdkgraph.Client, appTypes []string) snapshot {
+	s := snapshot{
 		Endpoints: countObjects(ctx, gc, "APIEndpoint"),
 		Files:     countObjects(ctx, gc, "SourceFile"),
 		Services:  countObjects(ctx, gc, "Service"),
 		Domains:   countObjects(ctx, gc, "Domain"),
 	}
+	return s
 }
 
 func countObjects(ctx context.Context, gc *sdkgraph.Client, objType string) int {
@@ -192,7 +213,7 @@ func globFiles(repo, patterns string) []string {
 	return files
 }
 
-func printReport(results []stepResult, before, after snapshot, dryRun bool) {
+func printReport(results []stepResult, before, after snapshot, dryRun bool, hasAPI, isCLI bool) {
 	tag := ""
 	if dryRun {
 		tag = " [DRY RUN]"
@@ -220,9 +241,14 @@ func printReport(results []stepResult, before, after snapshot, dryRun bool) {
 	fmt.Printf("  APIEndpoints : %d → %d\n", before.Endpoints, after.Endpoints)
 	fmt.Printf("  SourceFiles  : %d → %d\n", before.Files, after.Files)
 
-	fmt.Printf("\nNext steps for the AI agent:\n")
-	fmt.Printf("  codebase check api              # audit endpoint quality\n")
-	fmt.Printf("  codebase check coverage         # find untested domains\n")
+	fmt.Printf("\nNext steps:\n")
+	if hasAPI {
+		fmt.Printf("  codebase check api              # audit endpoint quality\n")
+		fmt.Printf("  codebase check coverage         # find untested domains\n")
+	}
+	if isCLI {
+		fmt.Printf("  codebase check logic            # audit CLI command structure\n")
+	}
 	fmt.Printf("  codebase analyze tree           # explore domain structure\n")
 	fmt.Printf("  codebase constitution rules     # view coding rules\n")
 	fmt.Printf("  codebase constitution check     # run rule checks\n")

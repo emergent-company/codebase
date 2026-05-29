@@ -21,10 +21,12 @@ func newCreateCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 This is called automatically by 'codebase onboard'. Use this command directly
 if you want to (re)create the constitution without running the full onboard.
 
-Starter rules cover:
-  - Naming conventions (key prefixes for APIEndpoint, Service, Domain)
-  - API quality (method, path, domain, auth_required must be set)
-  - Coverage (high-risk domains must have tests)
+Starter rules are selected based on the app types detected in .codebase.yml:
+  - backend:  APIEndpoint naming/quality rules (default)
+  - cli:      CLI service/error-handling/testing rules
+  - library:  Library export/doc/dependency rules
+
+Use --app-type to override detection.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c, err := config.New(*flagProjectID, *flagBranch)
@@ -32,7 +34,13 @@ Starter rules cover:
 				return err
 			}
 			ctx := context.Background()
-			return runCreate(ctx, c.Graph, flagName)
+
+			appTypes := config.AppTypes()
+
+			rules := selectRules(appTypes)
+
+			fmt.Printf("Selected %d rules for app types: %v\n", len(rules), appTypes)
+			return runCreate(ctx, c.Graph, flagName, rules)
 		},
 	}
 
@@ -40,17 +48,47 @@ Starter rules cover:
 	return cmd
 }
 
-// starterRules mirrors the ones in onboard/constitution.go.
-// Kept in sync manually — both seed the same set.
-var starterRules = []struct {
+// selectRules picks the appropriate rule set based on detected app types.
+func selectRules(appTypes []string) []ruleSpec {
+	hasBackend := false
+	hasCLI := false
+	hasLibrary := false
+	for _, t := range appTypes {
+		switch t {
+		case "backend":
+			hasBackend = true
+		case "cli":
+			hasCLI = true
+		case "library":
+			hasLibrary = true
+		}
+	}
+
+	if len(appTypes) == 0 || hasBackend {
+		return backendStarterRules
+	}
+	if hasCLI {
+		return cliStarterRules
+	}
+	if hasLibrary {
+		return libraryStarterRules
+	}
+	return backendStarterRules
+}
+
+// ruleSpec defines a single constitution rule.
+type ruleSpec struct {
 	Key       string
 	Name      string
 	Statement string
 	Category  string
 	AppliesTo string
 	AutoCheck string
-	PropCheck string // JSON propCheckSpec
-}{
+	PropCheck string
+}
+
+// backendStarterRules are the original API-centric rules.
+var backendStarterRules = []ruleSpec{
 	{
 		Key:       "rule-naming-api-endpoint-key",
 		Name:      "APIEndpoint key prefix",
@@ -116,7 +154,109 @@ var starterRules = []struct {
 	},
 }
 
-func runCreate(ctx context.Context, gc *sdkgraph.Client, name string) error {
+// cliStarterRules are rules for CLI (non-HTTP) applications.
+var cliStarterRules = []ruleSpec{
+	{
+		Key:       "rule-naming-service-key",
+		Name:      "Service key prefix",
+		Statement: "Every Service key must start with 'svc-' followed by domain slug.",
+		Category:  "naming",
+		AppliesTo: "Service",
+		AutoCheck: `^svc-[a-z][a-z0-9-]+$`,
+	},
+	{
+		Key:       "rule-naming-domain-key",
+		Name:      "Domain key prefix",
+		Statement: "Every Domain key must start with 'domain-' followed by the domain slug.",
+		Category:  "naming",
+		AppliesTo: "Domain",
+		AutoCheck: `^domain-[a-z][a-z0-9-]+$`,
+	},
+	{
+		Key:       "rule-service-error-wrapping",
+		Name:      "Errors must be wrapped with context",
+		Statement: "Errors returned from services must be wrapped with fmt.Errorf(\"context: %w\", err) to preserve the call chain.",
+		Category:  "service",
+		AppliesTo: "Service",
+	},
+	{
+		Key:       "rule-service-no-panic-library",
+		Name:      "No panic() in library/service packages",
+		Statement: "Service and library packages must never call panic() — return errors instead.",
+		Category:  "service",
+		AppliesTo: "Service",
+	},
+	{
+		Key:       "rule-service-no-global-state",
+		Name:      "No mutable package-level state",
+		Statement: "Service and library packages must not have mutable package-level variables (outside main or test packages).",
+		Category:  "service",
+		AppliesTo: "Service",
+	},
+	{
+		Key:       "rule-service-e2e-skip-no-creds",
+		Name:      "Integration tests skip when env vars absent",
+		Statement: "Integration/e2e tests must call t.Skip() when required environment credentials are not set, so CI passes without special secrets.",
+		Category:  "testing",
+		AppliesTo: "TestSuite",
+	},
+	{
+		Key:       "rule-coverage-pure-logic-tested",
+		Name:      "I/O-free services must have unit tests",
+		Statement: "Domains with services that perform no I/O must have at least one unit test file covering the domain.",
+		Category:  "testing",
+		AppliesTo: "Domain",
+	},
+}
+
+// libraryStarterRules are rules for library (no executable) projects.
+var libraryStarterRules = []ruleSpec{
+	{
+		Key:       "rule-naming-domain-key",
+		Name:      "Domain key prefix",
+		Statement: "Every Domain key must start with 'domain-' followed by the domain slug.",
+		Category:  "naming",
+		AppliesTo: "Domain",
+		AutoCheck: `^domain-[a-z][a-z0-9-]+$`,
+	},
+	{
+		Key:       "rule-service-error-wrapping",
+		Name:      "Errors must be wrapped with context",
+		Statement: "Errors returned from exported functions must be wrapped with fmt.Errorf(\"context: %w\", err) to preserve the call chain.",
+		Category:  "service",
+		AppliesTo: "Service",
+	},
+	{
+		Key:       "rule-service-no-panic-library",
+		Name:      "No panic() in library code",
+		Statement: "Library packages must never call panic() — return errors instead.",
+		Category:  "service",
+		AppliesTo: "Service",
+	},
+	{
+		Key:       "rule-service-no-global-state",
+		Name:      "No mutable package-level state",
+		Statement: "Library packages must not have mutable package-level variables.",
+		Category:  "service",
+		AppliesTo: "Service",
+	},
+	{
+		Key:       "rule-coverage-exported-tested",
+		Name:      "Exported functions must have tests",
+		Statement: "Every exported function or type in the public API should have at least one corresponding test.",
+		Category:  "testing",
+		AppliesTo: "Domain",
+	},
+	{
+		Key:       "rule-minimize-external-deps",
+		Name:      "Minimize external dependencies",
+		Statement: "Library packages should minimize external imports. Prefer stdlib over third-party packages when reasonable.",
+		Category:  "service",
+		AppliesTo: "Service",
+	},
+}
+
+func runCreate(ctx context.Context, gc *sdkgraph.Client, name string, rules []ruleSpec) error {
 	constKey := "constitution-v1"
 	constObj, err := gc.UpsertObject(ctx, &sdkgraph.CreateObjectRequest{
 		Type: "Constitution",
@@ -132,7 +272,7 @@ func runCreate(ctx context.Context, gc *sdkgraph.Client, name string) error {
 	}
 	fmt.Printf("created  constitution-v1  (%s)\n", constObj.EntityID)
 
-	for _, rule := range starterRules {
+	for _, rule := range rules {
 		key := rule.Key
 		props := map[string]any{
 			"name":      rule.Name,
@@ -171,6 +311,6 @@ func runCreate(ctx context.Context, gc *sdkgraph.Client, name string) error {
 		fmt.Printf("  rule  %s\n", rule.Key)
 	}
 
-	fmt.Printf("\n%d rules wired to constitution-v1\n", len(starterRules))
+	fmt.Printf("\n%d rules wired to constitution-v1\n", len(rules))
 	return nil
 }

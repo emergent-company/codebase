@@ -97,6 +97,33 @@ type AppYML struct {
 	Patterns     []string `yaml:"patterns,omitempty"`
 }
 
+// AppTypes returns the set of unique app_types in .codebase.yml.
+func AppTypes() []string {
+	yml := LoadYML()
+	if yml == nil || len(yml.Apps) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var types []string
+	for _, app := range yml.Apps {
+		if app.AppType != "" && !seen[app.AppType] {
+			seen[app.AppType] = true
+			types = append(types, app.AppType)
+		}
+	}
+	return types
+}
+
+// HasAppType checks if a specific app_type exists in .codebase.yml.
+func HasAppType(appType string) bool {
+	for _, t := range AppTypes() {
+		if t == appType {
+			return true
+		}
+	}
+	return false
+}
+
 // IgnoredChecks returns the set of check names to suppress for all detected apps.
 // Currently skips: api-related checks for cli/library apps.
 func IgnoredChecks() map[string]bool {
