@@ -95,13 +95,85 @@ type Client struct {
 	Branch    string
 }
 
+// loadEnvFiles walks up from cwd to find .env then .env.local, parses them,
+// and returns the merged config (.env base, .env.local overrides).
+// Actual process env vars still take highest priority — callers should
+// check os.Getenv first before falling back to these values.
+func loadEnvFiles() (apiKey, projectID string) {
+	merged := make(map[string]string)
+	// .env first (base config)
+	if p := walkUpFind(".env"); p != "" {
+		if raw, err := parseDotenv(p); err == nil {
+			for k, v := range raw {
+				merged[k] = v
+			}
+		}
+	}
+	// .env.local overrides .env
+	if p := walkUpFind(".env.local"); p != "" {
+		if raw, err := parseDotenv(p); err == nil {
+			for k, v := range raw {
+				merged[k] = v
+			}
+		}
+	}
+	return merged["CODEBASE_API_KEY"], merged["CODEBASE_PROJECT_ID"]
+}
+
+// walkUpFind searches for filename starting from cwd, walking up to root.
+func walkUpFind(filename string) string {
+	dir, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	for {
+		candidate := filepath.Join(dir, filename)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// parseDotenv parses a simple KEY=VALUE file, stripping surrounding quotes.
+func parseDotenv(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+			continue
+		}
+		idx := strings.Index(line, "=")
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		if len(val) >= 2 && ((val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'')) {
+			val = val[1 : len(val)-1]
+		}
+		result[key] = val
+	}
+	return result, nil
+}
+
 // New creates a configured Client. flagProjectID overrides all other sources.
 func New(flagProjectID, flagBranch string) (*Client, error) {
+	// Load .env → .env.local (in that order, so .env.local overrides)
+	envAK, envPID := loadEnvFiles()
+
 	yml, _ := findAndParseYML()
 
-	// Resolve API key: CODEBASE_API_KEY > .codebase.yml api_key.
+	// Auth priority: actual env var > .env.local > .env > .codebase.yml > ~/.memory/config.yaml.
 	if ak := os.Getenv("CODEBASE_API_KEY"); ak != "" {
 		os.Setenv("MEMORY_API_KEY", ak)
+	} else if envAK != "" {
+		os.Setenv("MEMORY_API_KEY", envAK)
 	} else if yml != nil && yml.APIKey != "" {
 		if err := os.Setenv("MEMORY_API_KEY", yml.APIKey); err != nil {
 			return nil, fmt.Errorf("exporting api_key from .codebase.yml: %w", err)
@@ -119,9 +191,13 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 		}
 	}
 
+	// Project ID priority: --flag > actual env var > .env.local > .env > .codebase.yml.
 	projectID := flagProjectID
 	if projectID == "" {
 		projectID = os.Getenv("CODEBASE_PROJECT_ID")
+	}
+	if projectID == "" {
+		projectID = envPID
 	}
 
 	if projectID == "" {
