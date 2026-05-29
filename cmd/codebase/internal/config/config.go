@@ -91,11 +91,11 @@ type CodebaseYML struct {
 
 // AppYML represents a detected application in .codebase.yml.
 type AppYML struct {
-	Key          string   `yaml:"key"`       // machine identifier for --app flag (e.g. "api-server")
-	Name         string   `yaml:"name"`      // human-readable display name
-	RootPath     string   `yaml:"root_path"`
-	AppType      string   `yaml:"app_type"`
-	Patterns     []string `yaml:"patterns,omitempty"`
+	Key          string   `yaml:"key" json:"key"`
+	Name         string   `yaml:"name" json:"name"`
+	RootPath     string   `yaml:"root_path" json:"root_path"`
+	AppType      string   `yaml:"app_type" json:"app_type"`
+	Patterns     []string `yaml:"patterns,omitempty" json:"patterns,omitempty"`
 }
 
 // FindApp looks up an app from .codebase.yml.

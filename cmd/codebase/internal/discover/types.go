@@ -6,6 +6,10 @@
 // detection rule is a data change, not a code change.
 package discovercmd
 
+import (
+	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
+)
+
 // DetectionMethod is how a detector checks for a pattern match.
 type DetectionMethod string
 
@@ -63,4 +67,29 @@ type DetectedApp struct {
 // DiscoverResult is the full output of a discover run.
 type DiscoverResult struct {
 	Apps []DetectedApp `yaml:"apps"`
+}
+
+// ScanResult is raw structural facts about a repo — no classification.
+type ScanResult struct {
+	Dir         string       `json:"dir"`
+	EntryPoints []EntryPoint `json:"entry_points"`
+	GoModules   []string     `json:"go_modules"`
+	Dockerfiles []string     `json:"dockerfiles"`
+	HasMakefile bool         `json:"has_makefile"`
+	Subdirs     []string     `json:"subdirs"`
+	GoFiles     int          `json:"go_files"`
+}
+
+// EntryPoint is a main package or CLI entry point with its imports.
+type EntryPoint struct {
+	Path       string   `json:"path"`
+	Dir        string   `json:"dir"`
+	Imports    []string `json:"imports"`
+	HasMain    bool     `json:"has_main"`
+	GoModDir   string   `json:"go_mod_dir"`
+}
+
+// AppsFile is the JSON/YAML structure for --apps-file.
+type AppsFile struct {
+	Apps []config.AppYML `yaml:"apps" json:"apps"`
 }
