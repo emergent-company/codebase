@@ -19,7 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newScenariosCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newScenariosCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var (
 		flagDomain    string
 		flagScenario  string
@@ -37,7 +37,8 @@ func newScenariosCmd(flagProjectID *string, flagBranch *string, flagFormat *stri
 			if err != nil {
 				return err
 			}
-			return runScenarios(cfg.SDK, flagDomain, flagScenario, flagContext, flagShowEmpty, flagMinSteps, flagNoActOnly, *flagFormat)
+			scope := resolveAppScope(cmd.Context(), cfg.Graph, *flagApp)
+			return runScenarios(cfg.SDK, flagDomain, flagScenario, flagContext, flagShowEmpty, flagMinSteps, flagNoActOnly, scope, *flagFormat)
 		},
 	}
 
@@ -51,7 +52,7 @@ func newScenariosCmd(flagProjectID *string, flagBranch *string, flagFormat *stri
 	return cmd
 }
 
-func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilter string, showEmpty bool, minSteps int, noActOnly bool, format string) error {
+func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilter string, showEmpty bool, minSteps int, noActOnly bool, scope *appScope, format string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
@@ -152,6 +153,9 @@ func runScenarios(client *sdk.Client, domainFilter, scenarioFilter, contextFilte
 		}
 
 		if domainFilter != "" && scDomain != domainFilter {
+			continue
+		}
+		if !scope.domainPasses(scDomain) {
 			continue
 		}
 		if scenarioFilter != "" && scKey != scenarioFilter {

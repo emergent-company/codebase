@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newContextsCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newContextsCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var (
 		flagContext   string
 		flagType      string
@@ -33,7 +33,8 @@ func newContextsCmd(flagProjectID *string, flagBranch *string, flagFormat *strin
 			if err != nil {
 				return err
 			}
-			return runContexts(cfg.SDK, flagContext, flagType, flagShowEmpty, *flagFormat)
+			scope := resolveAppScope(cmd.Context(), cfg.Graph, *flagApp)
+			return runContexts(cfg.SDK, flagContext, flagType, flagShowEmpty, scope, *flagFormat)
 		},
 	}
 
@@ -44,15 +45,17 @@ func newContextsCmd(flagProjectID *string, flagBranch *string, flagFormat *strin
 	return cmd
 }
 
-func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty bool, format string) error {
+func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty bool, scope *appScope, format string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
 	var (
+		scenarios []*sdkgraph.GraphObject
 		contexts  []*sdkgraph.GraphObject
 		actions   []*sdkgraph.GraphObject
 		occursIn  []*sdkgraph.GraphRelationship
 		hasAction []*sdkgraph.GraphRelationship
+		hasStep   []*sdkgraph.GraphRelationship
 		mu        sync.Mutex
 		wg        sync.WaitGroup
 		fetchErr  error
@@ -71,10 +74,12 @@ func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty
 	}
 
 			adapter := graph.NewSDKAdapter(client.Graph)
+			fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "Scenario"); scenarios = r; return e })
 			fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "Context"); contexts = r; return e })
 			fetch(func() error { r, e := cbgraph.ListAll(ctx, adapter, "Action"); actions = r; return e })
 			fetch(func() error { r, e := cbgraph.ListAllRels(ctx, adapter, "occurs_in"); occursIn = r; return e })
 			fetch(func() error { r, e := cbgraph.ListAllRels(ctx, adapter, "has_action"); hasAction = r; return e })
+			fetch(func() error { r, e := cbgraph.ListAllRels(ctx, adapter, "has_step"); hasStep = r; return e })
 
 	wg.Wait()
 	if fetchErr != nil {
@@ -99,6 +104,35 @@ func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty
 		stepToActions[r.SrcID] = append(stepToActions[r.SrcID], r.DstID)
 	}
 
+	// Build context -> domain mapping for app scope filtering
+	scenarioByID := map[string]*sdkgraph.GraphObject{}
+	for _, sc := range scenarios {
+		scenarioByID[sc.EntityID] = sc
+	}
+	stepToScenario := map[string]string{}
+	for _, r := range hasStep {
+		stepToScenario[r.DstID] = r.SrcID
+	}
+	ctxDomains := map[string]map[string]bool{}
+	for _, r := range occursIn {
+		stepID := r.SrcID
+		ctxID := r.DstID
+		if scID, ok := stepToScenario[stepID]; ok {
+			if sc, ok := scenarioByID[scID]; ok {
+				domain := cbgraph.StrProp(sc, "domain")
+				if domain == "" {
+					domain = domainFromKey(cbgraph.DerefKey(sc.Key))
+				}
+				if domain != "" {
+					if ctxDomains[ctxID] == nil {
+						ctxDomains[ctxID] = map[string]bool{}
+					}
+					ctxDomains[ctxID][strings.ToLower(domain)] = true
+				}
+			}
+		}
+	}
+
 	ctxToActions := map[string]map[string]bool{}
 	for stepID, ctxIDs := range stepToCtx {
 		for _, aid := range stepToActions[stepID] {
@@ -120,6 +154,21 @@ func runContexts(client *sdk.Client, contextFilter, typeFilter string, showEmpty
 		}
 		if typeFilter != "" && !strings.EqualFold(ctype, typeFilter) {
 			continue
+		}
+
+		// Filter by app scope: check if any domain linked to this context passes
+		if scope != nil && scope.Domains != nil {
+			domains := ctxDomains[c.EntityID]
+			passes := len(domains) == 0 // pass if no domain info
+			for d := range domains {
+				if scope.domainPasses(d) {
+					passes = true
+					break
+				}
+			}
+			if !passes {
+				continue
+			}
 		}
 
 		var actLabels []string

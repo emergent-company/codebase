@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newCompetitiveCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newCompetitiveCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var flagCompetitor string
 
 	cmd := &cobra.Command{
@@ -29,7 +29,8 @@ func newCompetitiveCmd(flagProjectID *string, flagBranch *string, flagFormat *st
 			if err != nil {
 				return err
 			}
-			return runCompetitive(cfg.SDK, flagCompetitor, *flagFormat)
+			scope := resolveAppScope(cmd.Context(), cfg.Graph, *flagApp)
+			return runCompetitive(cfg.SDK, flagCompetitor, scope, *flagFormat)
 		},
 	}
 
@@ -37,7 +38,7 @@ func newCompetitiveCmd(flagProjectID *string, flagBranch *string, flagFormat *st
 	return cmd
 }
 
-func runCompetitive(client *sdk.Client, filterKey, format string) error {
+func runCompetitive(client *sdk.Client, filterKey string, scope *appScope, format string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 

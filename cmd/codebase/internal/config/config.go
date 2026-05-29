@@ -97,8 +97,7 @@ type AppYML struct {
 	Patterns     []string `yaml:"patterns,omitempty"`
 }
 
-// AppConfig returns the full app config for a given app name from .codebase.yml.
-// Returns nil if no matching app is found.
+// FindApp looks up an app by name from .codebase.yml.
 func FindApp(name string) *AppYML {
 	yml := LoadYML()
 	if yml == nil {
@@ -110,6 +109,19 @@ func FindApp(name string) *AppYML {
 		}
 	}
 	return nil
+}
+
+// AppStrings returns a display-friendly list of app names from .codebase.yml.
+func AppStrings() string {
+	yml := LoadYML()
+	if yml == nil || len(yml.Apps) == 0 {
+		return ""
+	}
+	names := make([]string, len(yml.Apps))
+	for i, app := range yml.Apps {
+		names[i] = app.Name
+	}
+	return strings.Join(names, ", ")
 }
 
 // AppTypes returns the set of unique app_types in .codebase.yml.

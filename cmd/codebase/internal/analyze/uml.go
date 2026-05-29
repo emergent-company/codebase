@@ -17,7 +17,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newUMLCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newUMLCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var (
 		flagDomain   string
 		flagSchema   string
@@ -32,7 +32,8 @@ func newUMLCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *c
 			if err != nil {
 				return err
 			}
-			return runUML(cfg.SDK, flagDomain, flagSchema, flagNoFields, *flagFormat)
+			scope := resolveAppScope(cmd.Context(), cfg.Graph, *flagApp)
+			return runUML(cfg.SDK, flagDomain, flagSchema, flagNoFields, scope, *flagFormat)
 		},
 	}
 
@@ -43,7 +44,7 @@ func newUMLCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *c
 	return cmd
 }
 
-func runUML(client *sdk.Client, domain, schemaType string, noFields bool, format string) error {
+func runUML(client *sdk.Client, domain, schemaType string, noFields bool, scope *appScope, format string) error {
 	ctx := context.Background()
 	data, err := fetchUMLData(ctx, client)
 	if err != nil {
@@ -52,9 +53,9 @@ func runUML(client *sdk.Client, domain, schemaType string, noFields bool, format
 
 	var out io.Writer = os.Stdout
 	if schemaType == "mermaid" {
-		return renderMermaid(out, data, domain, noFields)
+		return renderMermaid(out, data, domain, noFields, scope)
 	}
-	return renderPlantUML(out, data, domain, noFields)
+	return renderPlantUML(out, data, domain, noFields, scope)
 }
 
 type UMLData struct {
@@ -103,7 +104,7 @@ func fetchUMLData(ctx context.Context, client *sdk.Client) (*UMLData, error) {
 	return data, nil
 }
 
-func renderPlantUML(w io.Writer, data *UMLData, domainFilter string, noFields bool) error {
+func renderPlantUML(w io.Writer, data *UMLData, domainFilter string, noFields bool, scope *appScope) error {
 	fmt.Fprintln(w, "@startuml")
 	fmt.Fprintln(w, "!theme plain")
 	fmt.Fprintln(w, "skinparam classAttributeIconSize 0")
@@ -131,6 +132,9 @@ func renderPlantUML(w io.Writer, data *UMLData, domainFilter string, noFields bo
 	for _, e := range data.Entities {
 		domain := cbgraph.StrProp(e, "domain")
 		if domainFilter != "" && domain != domainFilter {
+			continue
+		}
+		if !scope.domainPasses(domain) {
 			continue
 		}
 		schema := cbgraph.StrProp(e, "db_schema")
@@ -171,6 +175,9 @@ func renderPlantUML(w io.Writer, data *UMLData, domainFilter string, noFields bo
 		if (domainFilter != "" && cbgraph.StrProp(src, "domain") != domainFilter) || (domainFilter != "" && cbgraph.StrProp(dst, "domain") != domainFilter) {
 			continue
 		}
+		if !scope.domainPasses(cbgraph.StrProp(src, "domain")) || !scope.domainPasses(cbgraph.StrProp(dst, "domain")) {
+			continue
+		}
 		srcAlias := strings.ReplaceAll(strings.TrimPrefix(cbgraph.DerefKey(src.Key), "entity-"), "-", "_")
 		dstAlias := strings.ReplaceAll(strings.TrimPrefix(cbgraph.DerefKey(dst.Key), "entity-"), "-", "_")
 		label := ""
@@ -198,7 +205,7 @@ func renderPlantUMLField(w io.Writer, f *sdkgraph.GraphObject) {
 	fmt.Fprintf(w, "    + %s : %s%s\n", name, typ, suffix)
 }
 
-func renderMermaid(w io.Writer, data *UMLData, domainFilter string, noFields bool) error {
+func renderMermaid(w io.Writer, data *UMLData, domainFilter string, noFields bool, scope *appScope) error {
 	fmt.Fprintln(w, "erDiagram")
 	entityMap := make(map[string]*sdkgraph.GraphObject)
 	for _, e := range data.Entities {
@@ -217,6 +224,9 @@ func renderMermaid(w io.Writer, data *UMLData, domainFilter string, noFields boo
 
 	for _, e := range data.Entities {
 		if domainFilter != "" && cbgraph.StrProp(e, "domain") != domainFilter {
+			continue
+		}
+		if !scope.domainPasses(cbgraph.StrProp(e, "domain")) {
 			continue
 		}
 		tableName := cbgraph.StrProp(e, "table")
@@ -245,6 +255,9 @@ func renderMermaid(w io.Writer, data *UMLData, domainFilter string, noFields boo
 			continue
 		}
 		if (domainFilter != "" && cbgraph.StrProp(src, "domain") != domainFilter) || (domainFilter != "" && cbgraph.StrProp(dst, "domain") != domainFilter) {
+			continue
+		}
+		if !scope.domainPasses(cbgraph.StrProp(src, "domain")) || !scope.domainPasses(cbgraph.StrProp(dst, "domain")) {
 			continue
 		}
 		srcTable := cbgraph.StrProp(src, "table")

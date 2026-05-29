@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newTreeCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newTreeCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var (
 		flagDomain        string
 		flagShowScenarios bool
@@ -26,7 +26,18 @@ func newTreeCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *
 				return err
 			}
 			adapter := graph.NewSDKAdapter(cfg.Graph)
-			return cbanalyze.RunTree(context.Background(), adapter, cmd.OutOrStdout(), flagDomain, flagShowScenarios, flagShowEndpoints, flagMinScenarios, *flagFormat)
+
+			// Resolve app scope
+			scope := resolveAppScope(cmd.Context(), cfg.Graph, *flagApp)
+			appDomain := flagDomain
+			if scope != nil && len(scope.Domains) == 1 {
+				for d := range scope.Domains {
+					appDomain = d
+					break
+				}
+			}
+
+			return cbanalyze.RunTree(context.Background(), adapter, cmd.OutOrStdout(), appDomain, flagShowScenarios, flagShowEndpoints, flagMinScenarios, *flagFormat)
 		},
 	}
 
