@@ -10,6 +10,7 @@ import (
 
 	sdk "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk"
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
+	sdkregistry "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/schemaregistry"
 	"gopkg.in/yaml.v3"
 )
 
@@ -89,10 +90,12 @@ type CodebaseYML struct {
 
 // Client wraps the SDK client with resolved project context.
 type Client struct {
-	SDK       *sdk.Client
-	Graph     *sdkgraph.Client
-	ProjectID string
-	Branch    string
+	SDK            *sdk.Client
+	Graph          *sdkgraph.Client
+	SchemaRegistry *sdkregistry.Client
+	ProjectID      string
+	ProjectName    string // resolved project name (may be empty if only ID available)
+	Branch         string
 }
 
 // loadEnvFiles walks up from cwd to find .env then .env.local, parses them,
@@ -193,6 +196,7 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 
 	// Project ID priority: --flag > actual env var > .env.local > .env > .codebase.yml.
 	projectID := flagProjectID
+	var projectName string
 	if projectID == "" {
 		projectID = os.Getenv("CODEBASE_PROJECT_ID")
 	}
@@ -205,6 +209,7 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 			if yml.ProjectID != "" {
 				projectID = yml.ProjectID
 			} else if yml.Project != "" {
+				projectName = yml.Project
 				id, err := resolveProjectName(sdkClient, yml.Project)
 				if err != nil {
 					return nil, err
@@ -221,10 +226,12 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 	sdkClient.SetContext("", projectID)
 
 	return &Client{
-		SDK:       sdkClient,
-		Graph:     sdkClient.Graph,
-		ProjectID: projectID,
-		Branch:    flagBranch,
+		SDK:            sdkClient,
+		Graph:          sdkClient.Graph,
+		SchemaRegistry: sdkClient.SchemaRegistry,
+		ProjectID:      projectID,
+		ProjectName:    projectName,
+		Branch:         flagBranch,
 	}, nil
 }
 
