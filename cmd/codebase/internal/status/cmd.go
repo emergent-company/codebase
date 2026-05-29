@@ -59,6 +59,9 @@ with per-type breakdowns for objects and relationships.`,
 				projectName = fetchProjectName(ctx, cfg, serverURL)
 			}
 
+			// --- Constitution / purpose ---
+			purpose := fetchConstitutionPurpose(ctx, cfg)
+
 			// --- Discover types by sampling objects ---
 			sampleObjs, _ := cfg.Graph.ListObjects(ctx, &sdkgraph.ListObjectsOptions{
 				Limit: 500,
@@ -156,6 +159,9 @@ with per-type breakdowns for objects and relationships.`,
 			fmt.Fprintf(out, "Server:     %s\n", serverURL)
 			fmt.Fprintf(out, "Auth:       ✓ OK\n")
 			fmt.Fprintf(out, "Project:    %s\n", projLine)
+			if purpose != "" {
+				fmt.Fprintf(out, "Purpose:    %s\n", purpose)
+			}
 			fmt.Fprintf(out, "\n")
 
 			// Objects by type
@@ -214,4 +220,19 @@ func fetchProjectName(ctx context.Context, cfg *config.Client, serverURL string)
 		return ""
 	}
 	return info.ProjectName
+}
+
+// fetchConstitutionPurpose fetches the constitution-v1 object and returns its
+// purpose property, if set. No extra scopes needed — just objects:read.
+func fetchConstitutionPurpose(ctx context.Context, cfg *config.Client) string {
+	res, err := cfg.Graph.ListObjects(ctx, &sdkgraph.ListObjectsOptions{
+		Type:  "Constitution",
+		Key:   "constitution-v1",
+		Limit: 1,
+	})
+	if err != nil || res == nil || len(res.Items) == 0 {
+		return ""
+	}
+	purpose, _ := res.Items[0].Properties["purpose"].(string)
+	return purpose
 }

@@ -19,8 +19,9 @@ import (
 
 func NewCmd(flagProjectID *string, flagBranch *string) *cobra.Command {
 	var (
-		flagRepo   string
-		flagDryRun bool
+		flagRepo     string
+		flagDryRun   bool
+		flagPurpose  string
 	)
 	cwd, _ := os.Getwd()
 
@@ -41,14 +42,16 @@ Sequence:
   6. skills install   — install the codebase skill into .opencode/skills/
 
 Use --dry-run to preview without writing.
+Use --purpose to describe what this project is for (stored on the constitution).
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOnboard(flagProjectID, flagBranch, flagRepo, flagDryRun)
+			return runOnboard(flagProjectID, flagBranch, flagRepo, flagDryRun, flagPurpose)
 		},
 	}
 
 	cmd.Flags().StringVar(&flagRepo, "repo", cwd, "Path to repository root")
 	cmd.Flags().BoolVar(&flagDryRun, "dry-run", false, "Preview without writing")
+	cmd.Flags().StringVar(&flagPurpose, "purpose", "", "Describe the project's purpose (stored in the constitution)")
 	return cmd
 }
 
@@ -59,7 +62,7 @@ type stepResult struct {
 	Created int
 }
 
-func runOnboard(flagProjectID *string, flagBranch *string, repo string, dryRun bool) error {
+func runOnboard(flagProjectID *string, flagBranch *string, repo string, dryRun bool, purpose string) error {
 	c, err := config.New(*flagProjectID, *flagBranch)
 	if err != nil {
 		return err
@@ -115,7 +118,7 @@ func runOnboard(flagProjectID *string, flagBranch *string, repo string, dryRun b
 			Detail: "constitution-v1 already exists",
 		})
 	} else if !dryRun {
-		if err := createConstitution(ctx, c.Graph); err != nil {
+		if err := createConstitution(ctx, c.Graph, purpose); err != nil {
 			results = append(results, stepResult{Name: "constitution", Status: "error", Detail: err.Error()})
 		} else {
 			results = append(results, stepResult{

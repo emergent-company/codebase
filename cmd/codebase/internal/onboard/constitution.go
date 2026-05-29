@@ -81,16 +81,23 @@ var starterRules = []struct {
 
 // createConstitution creates constitution-v1 and seeds starter rules, wiring
 // each rule to the constitution via an 'includes' relationship.
-func createConstitution(ctx context.Context, gc *sdkgraph.Client) error {
+// purpose describes the project's high-level goal and is stored on the constitution.
+func createConstitution(ctx context.Context, gc *sdkgraph.Client, purpose string) error {
 	constKey := "constitution-v1"
+
+	props := map[string]any{
+		"name":        "Codebase Constitution v1",
+		"description": "Non-negotiable constraints for this codebase's knowledge graph. Created by codebase onboard.",
+		"version":     "1",
+	}
+	if purpose != "" {
+		props["purpose"] = purpose
+	}
+
 	constObj, err := gc.UpsertObject(ctx, &sdkgraph.CreateObjectRequest{
-		Type: "Constitution",
-		Key:  &constKey,
-		Properties: map[string]any{
-			"name":        "Codebase Constitution v1",
-			"description": "Non-negotiable constraints for this codebase's knowledge graph. Created by codebase onboard.",
-			"version":     "1",
-		},
+		Type:       "Constitution",
+		Key:        &constKey,
+		Properties: props,
 	})
 	if err != nil {
 		return fmt.Errorf("creating constitution: %w", err)
