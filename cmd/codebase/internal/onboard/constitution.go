@@ -184,6 +184,7 @@ var libraryStarterRules = []ruleSpec{
 }
 
 // selectRules picks the appropriate rule set based on detected app types.
+// When both backend and CLI/library exist (monorepo), merges the rule sets.
 func selectRules(appTypes []string) []ruleSpec {
 	hasBackend := false
 	hasCLI := false
@@ -199,20 +200,31 @@ func selectRules(appTypes []string) []ruleSpec {
 		}
 	}
 
-	// Default: backend rules (backward compatible)
-	if len(appTypes) == 0 || hasBackend {
+	if len(appTypes) == 0 || (hasBackend && !hasCLI && !hasLibrary) {
+		// Backend-only (or no config): original rules
 		return backendStarterRules
 	}
 
-	if hasCLI {
+	if hasCLI && !hasBackend && !hasLibrary {
 		return cliStarterRules
 	}
 
-	if hasLibrary {
+	if hasLibrary && !hasBackend && !hasCLI {
 		return libraryStarterRules
 	}
 
-	return backendStarterRules
+	// Multiple app types — merge rule sets, deduplicating by key
+	seen := make(map[string]bool)
+	var merged []ruleSpec
+	for _, set := range [][]ruleSpec{backendStarterRules, cliStarterRules, libraryStarterRules} {
+		for _, r := range set {
+			if !seen[r.Key] {
+				seen[r.Key] = true
+				merged = append(merged, r)
+			}
+		}
+	}
+	return merged
 }
 
 // createConstitution creates constitution-v1 and seeds starter rules, wiring

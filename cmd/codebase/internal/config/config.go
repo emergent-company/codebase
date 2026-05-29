@@ -124,11 +124,27 @@ func HasAppType(appType string) bool {
 	return false
 }
 
-// IgnoredChecks returns the set of check names to suppress for all detected apps.
-// Currently skips: api-related checks for cli/library apps.
+// IgnoredChecks returns the set of check names to suppress.
+// Only suppresses checks when there are NO backend apps in the project.
+// A monorepo with both backend + cli apps keeps all checks active.
 func IgnoredChecks() map[string]bool {
 	yml := LoadYML()
 	if yml == nil {
+		return nil
+	}
+	hasBackend := false
+	for _, app := range yml.Apps {
+		switch app.AppType {
+		case "backend":
+			hasBackend = true
+		case "cli", "library":
+			// non-backend type present
+		default:
+			// unknown type — treat conservatively
+		}
+	}
+	// If backend is present, don't suppress anything
+	if hasBackend || len(yml.Apps) == 0 {
 		return nil
 	}
 	ignored := make(map[string]bool)

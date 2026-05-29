@@ -49,6 +49,7 @@ Use --app-type to override detection.
 }
 
 // selectRules picks the appropriate rule set based on detected app types.
+// When both backend and CLI/library exist (monorepo), merges rule sets.
 func selectRules(appTypes []string) []ruleSpec {
 	hasBackend := false
 	hasCLI := false
@@ -64,16 +65,28 @@ func selectRules(appTypes []string) []ruleSpec {
 		}
 	}
 
-	if len(appTypes) == 0 || hasBackend {
+	if len(appTypes) == 0 || (hasBackend && !hasCLI && !hasLibrary) {
 		return backendStarterRules
 	}
-	if hasCLI {
+	if hasCLI && !hasBackend && !hasLibrary {
 		return cliStarterRules
 	}
-	if hasLibrary {
+	if hasLibrary && !hasBackend && !hasCLI {
 		return libraryStarterRules
 	}
-	return backendStarterRules
+
+	// Multiple app types — merge all rule sets, deduplicating by key
+	seen := make(map[string]bool)
+	var merged []ruleSpec
+	for _, set := range [][]ruleSpec{backendStarterRules, cliStarterRules, libraryStarterRules} {
+		for _, r := range set {
+			if !seen[r.Key] {
+				seen[r.Key] = true
+				merged = append(merged, r)
+			}
+		}
+	}
+	return merged
 }
 
 // ruleSpec defines a single constitution rule.
