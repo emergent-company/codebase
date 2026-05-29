@@ -209,13 +209,26 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 			if yml.ProjectID != "" {
 				projectID = yml.ProjectID
 			} else if yml.Project != "" {
-				projectName = yml.Project
-				id, err := resolveProjectName(sdkClient, yml.Project)
-				if err != nil {
-					return nil, err
+				if looksLikeUUID(yml.Project) {
+					// project: value is a UUID — use as ID directly
+					projectID = yml.Project
+				} else {
+					// Treat as a human-readable project name — resolve to ID
+					projectName = yml.Project
+					id, err := resolveProjectName(sdkClient, yml.Project)
+					if err != nil {
+						return nil, err
+					}
+					projectID = id
 				}
-				projectID = id
 			}
+		}
+	}
+
+	// Capture display name from .codebase.yml even when ID came from env var.
+	if projectName == "" && yml != nil {
+		if yml.Project != "" && !looksLikeUUID(yml.Project) {
+			projectName = yml.Project
 		}
 	}
 
@@ -277,4 +290,24 @@ func resolveProjectName(client *sdk.Client, name string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no project named %q found", name)
+}
+
+// looksLikeUUID checks if a string is a UUID (8-4-4-4-12 hex format).
+func looksLikeUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
 }

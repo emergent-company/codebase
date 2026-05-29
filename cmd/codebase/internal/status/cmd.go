@@ -8,7 +8,6 @@ import (
 	"os"
 	"sort"
 
-	sdkprojects "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/projects"
 	sdkgraph "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/graph"
 	sdkregistry "github.com/emergent-company/emergent.memory/apps/server/pkg/sdk/schemaregistry"
 
@@ -40,13 +39,8 @@ with per-type breakdowns for objects and relationships.`,
 			}
 
 			// --- Project name ---
-			// Try Projects.Get first; fall back to config-resolved name or ID.
+			// Resolved from .codebase.yml during config loading; no API call needed.
 			projectName := cfg.ProjectName
-			if projectName == "" {
-				if p, err := cfg.SDK.Projects.Get(ctx, cfg.ProjectID, &sdkprojects.GetOptions{}); err == nil {
-					projectName = p.Name
-				}
-			}
 
 			// --- Object types (with counts) ---
 			type obTypeCount struct {
