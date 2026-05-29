@@ -91,37 +91,61 @@ type CodebaseYML struct {
 
 // AppYML represents a detected application in .codebase.yml.
 type AppYML struct {
-	Name         string   `yaml:"name"`
+	Key          string   `yaml:"key"`       // machine identifier for --app flag (e.g. "api-server")
+	Name         string   `yaml:"name"`      // human-readable display name
 	RootPath     string   `yaml:"root_path"`
 	AppType      string   `yaml:"app_type"`
 	Patterns     []string `yaml:"patterns,omitempty"`
 }
 
-// FindApp looks up an app by name from .codebase.yml.
-func FindApp(name string) *AppYML {
+// FindApp looks up an app from .codebase.yml.
+// Matches by key first, then by name (backward compatible).
+func FindApp(ident string) *AppYML {
 	yml := LoadYML()
 	if yml == nil {
 		return nil
 	}
 	for _, app := range yml.Apps {
-		if app.Name == name {
+		if app.Key == ident {
+			return &app
+		}
+	}
+	for _, app := range yml.Apps {
+		if app.Name == ident {
 			return &app
 		}
 	}
 	return nil
 }
 
-// AppStrings returns a display-friendly list of app names from .codebase.yml.
+// MakeAppKey generates a machine-friendly key from an app name.
+// "Go CLI Application" → "go-cli-application"
+func MakeAppKey(name string) string {
+	if name == "" {
+		return ""
+	}
+	key := strings.ToLower(name)
+	key = strings.ReplaceAll(key, " ", "-")
+	key = strings.ReplaceAll(key, "/", "-")
+	key = strings.ReplaceAll(key, "_", "-")
+	return key
+}
+
+// AppStrings returns a display-friendly list of app keys from .codebase.yml.
 func AppStrings() string {
 	yml := LoadYML()
 	if yml == nil || len(yml.Apps) == 0 {
 		return ""
 	}
-	names := make([]string, len(yml.Apps))
+	pairs := make([]string, len(yml.Apps))
 	for i, app := range yml.Apps {
-		names[i] = app.Name
+		key := app.Key
+		if key == "" {
+			key = MakeAppKey(app.Name)
+		}
+		pairs[i] = fmt.Sprintf("%s (%s)", key, app.Name)
 	}
-	return strings.Join(names, ", ")
+	return strings.Join(pairs, ", ")
 }
 
 // AppTypes returns the set of unique app_types in .codebase.yml.

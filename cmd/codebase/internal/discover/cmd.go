@@ -114,6 +114,7 @@ func writeDiscoverResult(path string, apps *[]DetectedApp) error {
 	yml.Apps = make([]config.AppYML, 0, len(*apps))
 	for _, app := range *apps {
 		yml.Apps = append(yml.Apps, config.AppYML{
+			Key:      config.MakeAppKey(app.Name),
 			Name:     app.Name,
 			RootPath: app.RootPath,
 			AppType:  app.AppType,

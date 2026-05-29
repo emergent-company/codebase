@@ -9,7 +9,7 @@ func NewCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobr
 		Use:   "check",
 		Short: "Read-only graph quality analysis",
 	}
-	cmd.PersistentFlags().StringVar(&flagApp, "app", "", "Filter to a specific app (name from .codebase.yml apps section)")
+	cmd.PersistentFlags().StringVar(&flagApp, "app", "", "Filter to a specific app (key from .codebase.yml apps section, e.g. \"api-server\")")
 	cmd.AddCommand(newAPICmd(flagProjectID, flagBranch, flagFormat, &flagApp))
 	cmd.AddCommand(newLogicCmd(flagProjectID, flagBranch, flagFormat, &flagApp))
 	cmd.AddCommand(newCoverageCmd(flagProjectID, flagBranch, flagFormat, &flagApp))
