@@ -29,6 +29,7 @@ import (
 	onboardcmd "github.com/mkucharz/codebase/cmd/codebase/internal/onboard"
 	seedcmd "github.com/mkucharz/codebase/cmd/codebase/internal/seed"
 	skillscmd "github.com/mkucharz/codebase/cmd/codebase/internal/skills"
+	statuscmd "github.com/mkucharz/codebase/cmd/codebase/internal/status"
 	synccmd "github.com/mkucharz/codebase/cmd/codebase/internal/sync"
 	"github.com/spf13/cobra"
 )
@@ -91,6 +92,7 @@ func init() {
 	rootCmd.AddCommand(fixcmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
 	rootCmd.AddCommand(branchcmd.NewCmd(&flagProjectID))
 	rootCmd.AddCommand(skillscmd.NewCmd())
+	rootCmd.AddCommand(statuscmd.NewCmd(&flagProjectID, &flagBranch))
 	rootCmd.AddCommand(constitutioncmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
 	createcmd.Register(rootCmd, &flagProjectID, &flagBranch, &flagFormat)
 }
