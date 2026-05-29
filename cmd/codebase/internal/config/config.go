@@ -86,6 +86,37 @@ type CodebaseYML struct {
 	Server    string     `yaml:"server"`     // optional server URL override
 	APIKey    string     `yaml:"api_key"`    // optional API key (set as MEMORY_API_KEY)
 	Sync      SyncConfig `yaml:"sync"`       // sync sub-command configuration
+	Apps      []AppYML   `yaml:"apps,omitempty"` // discovered applications (written by `codebase discover`)
+}
+
+// AppYML represents a detected application in .codebase.yml.
+type AppYML struct {
+	Name         string   `yaml:"name"`
+	RootPath     string   `yaml:"root_path"`
+	AppType      string   `yaml:"app_type"`
+	Patterns     []string `yaml:"patterns,omitempty"`
+}
+
+// IgnoredChecks returns the set of check names to suppress for all detected apps.
+// Currently skips: api-related checks for cli/library apps.
+func IgnoredChecks() map[string]bool {
+	yml := LoadYML()
+	if yml == nil {
+		return nil
+	}
+	ignored := make(map[string]bool)
+	for _, app := range yml.Apps {
+		switch app.AppType {
+		case "cli":
+			ignored["DOMAIN_NO_ENDPOINTS"] = true
+		case "library":
+			ignored["DOMAIN_NO_ENDPOINTS"] = true
+		}
+	}
+	if len(ignored) == 0 {
+		return nil
+	}
+	return ignored
 }
 
 // Client wraps the SDK client with resolved project context.

@@ -1,0 +1,53 @@
+# Pattern definition: Go Library
+# Detected by: exported functions, go.mod, no main.go, no HTTP framework
+name: go-library
+label: Go Library
+app_type: library
+detect:
+  - method: file_exists
+    description: Has go.mod
+    params:
+      pattern: go.mod
+  - method: file_glob
+    description: Has exported Go source files (no main package)
+    params:
+      patterns:
+        - "*.go"
+      exclude:
+        - "*_test.go"
+        - "main.go"
+      min: 3
+  - method: import_search
+    description: No HTTP framework imports
+    params:
+      imports:
+        - github.com/labstack/echo
+        - github.com/gin-gonic/gin
+        - net/http
+      none_match: true
+      min: 0
+  - method: file_glob
+    description: No CLI entry points
+    params:
+      patterns:
+        - "cmd/*/main.go"
+        - "main.go"
+      none_match: true
+observed:
+  - name: exported_public_api
+    label: Exported Public API
+    description: Library exposes exported functions/types for external consumption
+  - name: test_coverage_by_suite
+    label: Test Coverage by Suite
+    description: Test coverage is measured by test files and exported function coverage
+ignore_checks:
+  - DOMAIN_NO_ENDPOINTS
+  - DOMAIN_NO_ROUTES
+  - DOMAIN_NO_COMMANDS
+starter_rules:
+  - rule-naming-domain-key
+  - rule-naming-service-key
+  - rule-service-error-wrapping
+  - rule-service-no-panic-library
+  - rule-service-no-global-state
+  - rule-coverage-pure-logic-tested

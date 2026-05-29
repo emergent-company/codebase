@@ -1,0 +1,41 @@
+# Pattern definition: Go CLI Application
+# Detected by: cmd/*/main.go entry points, cobra usage, no HTTP framework
+name: go-cli
+label: Go CLI Application
+app_type: cli
+detect:
+  - method: file_glob
+    description: Has command entry points
+    params:
+      patterns:
+        - "cmd/*/main.go"
+        - "main.go"
+      min: 1
+  - method: import_search
+    description: Uses cobra command routing
+    params:
+      imports:
+        - github.com/spf13/cobra
+      min: 1
+# Patterns observed in CLI apps
+observed:
+  - name: cobra_command_tree
+    label: Cobra Command Tree
+    description: Uses cobra.Command for CLI subcommand routing
+  - name: service_has_methods
+    label: Service Methods
+    description: Services export public methods directly (no HTTP)
+  - name: main_as_entry_point
+    label: Main Entry Point
+    description: cmd/*/main.go is the application entry point
+# Checks to suppress for this app type
+ignore_checks:
+  - DOMAIN_NO_ENDPOINTS
+  - DOMAIN_NO_ROUTES
+# Starter rules for constitution create
+starter_rules:
+  - rule-naming-domain-key
+  - rule-naming-service-key
+  - rule-service-error-wrapping
+  - rule-service-no-panic-library
+  - rule-service-no-global-state

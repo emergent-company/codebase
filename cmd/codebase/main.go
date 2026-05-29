@@ -24,6 +24,7 @@ import (
 	checkcmd "github.com/mkucharz/codebase/cmd/codebase/internal/check"
 	constitutioncmd "github.com/mkucharz/codebase/cmd/codebase/internal/constitution"
 	createcmd "github.com/mkucharz/codebase/cmd/codebase/internal/create"
+	discovercmd "github.com/mkucharz/codebase/cmd/codebase/internal/discover"
 	fixcmd "github.com/mkucharz/codebase/cmd/codebase/internal/fix"
 	graphcmd "github.com/mkucharz/codebase/cmd/codebase/internal/graph"
 	onboardcmd "github.com/mkucharz/codebase/cmd/codebase/internal/onboard"
@@ -64,7 +65,7 @@ Examples:
   codebase check api            # audit APIEndpoint quality
   codebase check coverage       # test coverage gaps by domain
   codebase check complexity     # domain complexity scores
-  codebase analyze tree         # Domain→Service→Endpoint map
+  codebase analyze tree         # Domain->Service->Endpoint map
   codebase graph list --type APIEndpoint --all
   codebase graph get ep-agents-listagents
   codebase fix stale            # remove stale graph objects
@@ -96,6 +97,7 @@ func init() {
 	rootCmd.AddCommand(statuscmd.NewCmd(&flagProjectID, &flagBranch))
 	rootCmd.AddCommand(upgradecmd.NewCmd(&Version))
 	rootCmd.AddCommand(constitutioncmd.NewCmd(&flagProjectID, &flagBranch, &flagFormat))
+	rootCmd.AddCommand(discovercmd.NewCmd(&flagProjectID))
 	createcmd.Register(rootCmd, &flagProjectID, &flagBranch, &flagFormat)
 }
 

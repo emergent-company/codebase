@@ -123,7 +123,13 @@ func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string) 
 				findings = append(findings, logicFinding{Check: check, Domain: domain, Object: object, Detail: detail, Tier: tier})
 			}
 
-			if checkEnabled("DOMAIN_NO_ENDPOINTS") {
+			// Load ignored checks from .codebase.yml app types
+			ignoredChecks := config.IgnoredChecks()
+			checkIgnored := func(name string) bool {
+				return ignoredChecks != nil && ignoredChecks[name]
+			}
+
+			if checkEnabled("DOMAIN_NO_ENDPOINTS") && !checkIgnored("DOMAIN_NO_ENDPOINTS") {
 				for _, d := range domains {
 					if strings.ToLower(strProp(d, "type")) == "frontend" {
 						continue

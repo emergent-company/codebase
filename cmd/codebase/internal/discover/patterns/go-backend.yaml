@@ -1,0 +1,50 @@
+# Pattern definition: HTTP Backend (Go)
+# Detected by: route files, Echo/Gin/Chi imports, handler patterns
+name: go-backend
+label: Go HTTP Backend
+app_type: backend
+detect:
+  - method: import_search
+    description: Uses HTTP framework
+    params:
+      imports:
+        - github.com/labstack/echo
+        - github.com/gin-gonic/gin
+        - github.com/go-chi/chi
+        - net/http
+      min: 2
+  - method: file_glob
+    description: Has route/handler registration files
+    params:
+      patterns:
+        - "**/routes.go"
+        - "**/*handler*.go"
+        - "**/handler.go"
+      min: 2
+  - method: file_glob
+    description: Has service layer
+    params:
+      patterns:
+        - "**/service.go"
+        - "**/*service*.go"
+      min: 1
+observed:
+  - name: service_exposes_endpoint
+    label: Service Exposes Endpoint
+    description: Services expose functionality via HTTP API endpoints
+  - name: middleware_applies_to_routes
+    label: Middleware on Routes
+    description: Request pipeline middleware applies to route groups
+  - name: handler_in_routes_file
+    label: Handler in Routes File
+    description: Route handlers are defined in dedicated routes files
+ignore_checks: []
+starter_rules:
+  - rule-api-auth-documented
+  - rule-api-has-domain
+  - rule-api-has-method
+  - rule-api-has-path
+  - rule-naming-api-endpoint-key
+  - rule-naming-domain-key
+  - rule-naming-service-key
+  - rule-coverage-high-risk-tested
