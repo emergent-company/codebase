@@ -230,13 +230,9 @@ func extractBinary(tarPath string) ([]byte, error) {
 		}
 
 		if header.Typeflag == tar.TypeReg {
-			baseName := header.Name
-			if strings.Contains(baseName, "/") {
-				parts := strings.Split(baseName, "/")
-				baseName = parts[len(parts)-1]
-			}
-
-			if baseName == "codebase" || baseName == "codebase.exe" {
+			// Accept any file starting with "codebase" (goreleaser names the binary
+			// after the platform, e.g. codebase-darwin-arm64).
+			if strings.HasPrefix(header.Name, "codebase") && !strings.HasSuffix(header.Name, ".tar.gz") {
 				return io.ReadAll(tr)
 			}
 		}
