@@ -7,7 +7,9 @@ package statuscmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"sort"
 
@@ -15,6 +17,11 @@ import (
 	"github.com/mkucharz/codebase/cmd/codebase/internal/config"
 	"github.com/spf13/cobra"
 )
+
+// tokenInfoResponse matches the server's GET /api/auth/me response.
+type tokenInfoResponse struct {
+	ProjectName string `json:"project_name,omitempty"`
+}
 
 type typeCount struct {
 	Type  string
@@ -44,8 +51,13 @@ with per-type breakdowns for objects and relationships.`,
 				serverURL = "https://memory.emergent-company.ai"
 			}
 
-			// Project name from .codebase.yml only — no API call.
+			// --- Project name ---
+			// Try /api/auth/me first — no projects:read scope needed (RequireAuth only).
+			// Falls back to .codebase.yml project: field.
 			projectName := cfg.ProjectName
+			if projectName == "" {
+				projectName = fetchProjectName(ctx, cfg, serverURL)
+			}
 
 			// --- Discover types by sampling objects ---
 			sampleObjs, _ := cfg.Graph.ListObjects(ctx, &sdkgraph.ListObjectsOptions{
@@ -180,4 +192,26 @@ with per-type breakdowns for objects and relationships.`,
 	}
 
 	return cmd
+}
+
+// fetchProjectName calls GET /api/auth/me to get the project name
+// from the token's embedded project context. No projects:read scope needed.
+func fetchProjectName(ctx context.Context, cfg *config.Client, serverURL string) string {
+	req, err := http.NewRequestWithContext(ctx, "GET", serverURL+"/api/auth/me", nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := cfg.SDK.Do(ctx, req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var info tokenInfoResponse
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return ""
+	}
+	return info.ProjectName
 }

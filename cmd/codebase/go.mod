@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	github.com/emergent-company/codebase v0.0.0
-	github.com/emergent-company/emergent.memory/apps/server/pkg/sdk v0.35.201
+	github.com/emergent-company/emergent.memory/apps/server/pkg/sdk v0.41.120
 	github.com/fatih/color v1.18.0
 	github.com/olekukonko/tablewriter v1.1.3
 	github.com/spf13/cobra v1.10.2
