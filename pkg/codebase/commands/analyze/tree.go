@@ -110,6 +110,35 @@ func RunTree(ctx context.Context, gc graph.GraphClient, w io.Writer, domainFilte
 		}
 	}
 
+	// Also check for direct belongs_to from APIEndpoint to Domain.
+	// This is the simpler and more common pattern — endpoints don't
+	// always have a Service in the middle.
+	for _, r := range btRels {
+		ep, ok := epByID[r.SrcID]
+		if !ok {
+			continue
+		}
+		domain, ok := domainByID[r.DstID]
+		if !ok {
+			continue
+		}
+		slug := domainKeySlug(graph.DerefKey(domain.Key))
+		// Skip if already added via exposes chain (dedup)
+		alreadyAdded := false
+		for _, existing := range epBySlug[slug] {
+			if existing.Method == graph.StrProp(ep, "method") && existing.Path == graph.StrProp(ep, "path") {
+				alreadyAdded = true
+				break
+			}
+		}
+		if !alreadyAdded {
+			epBySlug[slug] = append(epBySlug[slug], EndpointInfo{
+				Method: graph.StrProp(ep, "method"),
+				Path:   graph.StrProp(ep, "path"),
+			})
+		}
+	}
+
 	scenBySlug := map[string][]ScenarioInfo{}
 	for _, sc := range scenarios {
 		scKey := graph.DerefKey(sc.Key)
