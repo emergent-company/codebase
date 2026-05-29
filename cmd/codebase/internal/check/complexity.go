@@ -26,7 +26,7 @@ type complexityReport struct {
 	Actions      []string `json:"actions,omitempty"`
 }
 
-func newComplexityCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newComplexityCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var flagDomain string
 	var flagTop int
 	var flagMinPriority int
@@ -40,6 +40,9 @@ func newComplexityCmd(flagProjectID *string, flagBranch *string, flagFormat *str
 			if err != nil {
 				return err
 			}
+
+			// Resolve app scope
+			scope := resolveAppScope(context.Background(), c.Graph, *flagApp)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
@@ -83,11 +86,17 @@ func newComplexityCmd(flagProjectID *string, flagBranch *string, flagFormat *str
 				if flagDomain != "" && !strings.EqualFold(d, flagDomain) {
 					continue
 				}
+				if !scope.domainPasses(d) {
+					continue
+				}
 				getReport(d).Endpoints++
 			}
 			for _, m := range methods {
 				d := getDomain(m)
 				if flagDomain != "" && !strings.EqualFold(d, flagDomain) {
+					continue
+				}
+				if !scope.domainPasses(d) {
 					continue
 				}
 				getReport(d).Methods++
@@ -97,11 +106,17 @@ func newComplexityCmd(flagProjectID *string, flagBranch *string, flagFormat *str
 				if flagDomain != "" && !strings.EqualFold(d, flagDomain) {
 					continue
 				}
+				if !scope.domainPasses(d) {
+					continue
+				}
 				getReport(d).SQLQueries++
 			}
 			for _, j := range jobs {
 				d := getDomain(j)
 				if flagDomain != "" && !strings.EqualFold(d, flagDomain) {
+					continue
+				}
+				if !scope.domainPasses(d) {
 					continue
 				}
 				getReport(d).Jobs++

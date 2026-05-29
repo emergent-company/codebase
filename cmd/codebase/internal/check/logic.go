@@ -21,7 +21,7 @@ type logicFinding struct {
 	Tier   int    `json:"tier"`
 }
 
-func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var flagChecks string
 	var flagDomain string
 	var flagVerbose bool
@@ -30,15 +30,18 @@ func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string) 
 		Use:   "logic",
 		Short: "Audit graph for logical consistency and design gaps",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := config.New(*flagProjectID, *flagBranch)
-			if err != nil {
-				return err
-			}
+		c, err := config.New(*flagProjectID, *flagBranch)
+		if err != nil {
+			return err
+		}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-			defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
 
-			enabled := make(map[string]bool)
+		// Resolve app scope
+		scope := resolveAppScope(ctx, c.Graph, *flagApp)
+
+		enabled := make(map[string]bool)
 			if flagChecks != "" {
 				for _, chk := range strings.Split(flagChecks, ",") {
 					enabled[strings.TrimSpace(strings.ToUpper(chk))] = true
@@ -135,6 +138,9 @@ func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string) 
 						continue
 					}
 					name := strings.ToLower(strProp(d, "name"))
+					if !scope.domainPasses(name) {
+						continue
+					}
 					if len(epByDomain[name]) == 0 {
 						add("DOMAIN_NO_ENDPOINTS", name, name, "domain has no APIEndpoints", 2)
 					}
@@ -147,6 +153,9 @@ func newLogicCmd(flagProjectID *string, flagBranch *string, flagFormat *string) 
 						continue
 					}
 					name := strings.ToLower(strProp(d, "name"))
+					if !scope.domainPasses(name) {
+						continue
+					}
 					if len(domainToSvcs[d.EntityID]) == 0 {
 						add("DOMAIN_NO_SERVICE", name, strProp(d, "name"), "domain has no Service linked via belongs_to", 2)
 					}

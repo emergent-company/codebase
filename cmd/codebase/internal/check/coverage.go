@@ -25,7 +25,7 @@ type coverageReport struct {
 	Notes       string   `json:"notes"`
 }
 
-func newCoverageCmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newCoverageCmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var flagDomain string
 	var flagMinCoverage int
 	var flagSort string
@@ -39,6 +39,9 @@ func newCoverageCmd(flagProjectID *string, flagBranch *string, flagFormat *strin
 			if err != nil {
 				return err
 			}
+
+			// Resolve app scope
+			scope := resolveAppScope(context.Background(), c.Graph, *flagApp)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			defer cancel()
@@ -87,6 +90,9 @@ func newCoverageCmd(flagProjectID *string, flagBranch *string, flagFormat *strin
 				if flagDomain != "" && !strings.EqualFold(d, flagDomain) {
 					continue
 				}
+				if !scope.domainPasses(d) {
+					continue
+				}
 				r := getReport(d)
 				r.Services = append(r.Services, strProp(s, "name"))
 				if tsIDs, ok := testedByMap[s.EntityID]; ok {
@@ -100,12 +106,18 @@ func newCoverageCmd(flagProjectID *string, flagBranch *string, flagFormat *strin
 				if flagDomain != "" && !strings.EqualFold(d, flagDomain) {
 					continue
 				}
+				if !scope.domainPasses(d) {
+					continue
+				}
 				getReport(d).Methods++
 			}
 
 			for _, ep := range endpoints {
 				d := getDomain(ep)
 				if flagDomain != "" && !strings.EqualFold(d, flagDomain) {
+					continue
+				}
+				if !scope.domainPasses(d) {
 					continue
 				}
 				getReport(d).Endpoints++

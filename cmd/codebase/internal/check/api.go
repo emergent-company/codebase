@@ -23,7 +23,7 @@ type apiFinding struct {
 	Detail  string `json:"detail"`
 }
 
-func newAPICmd(flagProjectID *string, flagBranch *string, flagFormat *string) *cobra.Command {
+func newAPICmd(flagProjectID *string, flagBranch *string, flagFormat *string, flagApp *string) *cobra.Command {
 	var flagDomain string
 	var flagChecks string
 
@@ -35,6 +35,9 @@ func newAPICmd(flagProjectID *string, flagBranch *string, flagFormat *string) *c
 			if err != nil {
 				return err
 			}
+
+			// Resolve app scope
+			scope := resolveAppScope(context.Background(), c.Graph, *flagApp)
 
 			enabled := make(map[string]bool)
 			for _, chk := range strings.Split(flagChecks, ",") {
@@ -67,6 +70,9 @@ func newAPICmd(flagProjectID *string, flagBranch *string, flagFormat *string) *c
 			for _, ep := range eps {
 				domain := strProp(ep, "domain")
 				if flagDomain != "" && !strings.EqualFold(domain, flagDomain) {
+					continue
+				}
+				if !scope.domainPasses(domain) {
 					continue
 				}
 
