@@ -68,7 +68,7 @@ func RunCompleteness(ctx context.Context, g graph.GraphClient, opts *Completenes
 		"has_feature", "compares_on", "evaluated_by", "uses_pricing",
 		"provides_integration", "exposes_gap", "responds_to",
 		"closes_gap", "captures_trend", "impacts", "compares_against", "drives",
-		"realizes",
+		"realizes", "acts_in",
 	}
 	relCount := make(map[string]int)
 	allRels := make([]*sdkgraph.GraphRelationship, 0)
