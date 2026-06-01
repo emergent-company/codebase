@@ -325,22 +325,61 @@ func printRecommendations(cmd *cobra.Command, result *ScanResult) {
 	}
 
 	for _, ep := range result.EntryPoints {
-		hasBackend := containsImport(ep.Imports, "echo", "gin", "chi", "net/http", "gorilla", "database/sql", "internal/server", "domain/")
-		hasCLI := containsImport(ep.Imports, "cobra", "/cli")
-		hasFramework := hasBackend || hasCLI
+		// Body-level patterns beat import-level patterns.
+		hasServerBody := len(ep.ServerPatterns) > 0
+		hasCLIBody := len(ep.CLIPatterns) > 0
 
-		if !hasFramework {
-			fmt.Fprintf(out, "  %s — unknown structure (no detected frameworks)\n", ep.Path)
+		// Import-level hints (only used as fallback when body is ambiguous).
+		hasBackendImport := containsImport(ep.Imports, "echo", "gin", "chi", "gorilla")
+		hasCLIImport := containsImport(ep.Imports, "cobra", "/cli", "godotenv", "bubbletea", "tview", "tcell")
+		hasSDKImport := containsImport(ep.Imports, "net/http", "database/sql")
+
+		// Classification priority: body server > body CLI > import hints.
+		var appType, detail string
+		switch {
+		case hasServerBody:
+			appType = "backend"
+			detail = fmt.Sprintf("serves HTTP (%s)", ep.ServerPatterns[0])
+		case hasCLIBody && !hasBackendImport:
+			appType = "cli"
+			detail = fmt.Sprintf("CLI tool (%s)", ep.CLIPatterns[0])
+		case hasCLIBody && hasBackendImport:
+			// Has both CLI patterns and backend imports — check which dominates
+			appType = "cli"
+			detail = fmt.Sprintf("CLI tool with HTTP support (%s)", ep.CLIPatterns[0])
+		case hasCLIImport && !hasBackendImport && !hasSDKImport:
+			appType = "cli"
+			detail = fmt.Sprintf("imports CLI framework")
+		case hasBackendImport:
+			appType = "backend"
+			detail = "imports HTTP framework"
+		case hasSDKImport:
+			// net/http or database/sql alone isn't enough to call it backend
+			fmt.Fprintf(out, "  %s — imports SDK/net libraries (no server or CLI patterns found)\n", ep.Path)
 			fmt.Fprintf(out, "    Suggested app_type: library or check imports manually\n")
-		} else if hasBackend && hasCLI {
-			fmt.Fprintf(out, "  %s — CLI + HTTP framework detected\n", ep.Path)
-			fmt.Fprintf(out, "    Suggested app_type: backend (higher priority than cli)\n")
-		} else if hasBackend {
-			fmt.Fprintf(out, "  %s — uses %s\n", ep.Path, firstFew(ep.Imports, 3))
-			fmt.Fprintf(out, "    Suggested app_type: backend\n")
-		} else if hasCLI {
-			fmt.Fprintf(out, "  %s — uses %s\n", ep.Path, firstFew(ep.Imports, 3))
-			fmt.Fprintf(out, "    Suggested app_type: cli\n")
+			suggestedKey := config.MakeAppKey(ep.Dir)
+			if suggestedKey == "." || suggestedKey == "" {
+				suggestedKey = "app"
+			}
+			fmt.Fprintf(out, "    Suggested key:    %s\n", suggestedKey)
+			fmt.Fprintf(out, "    Root path:        %s\n", ep.Dir)
+			fmt.Fprintf(out, "\n")
+			continue
+		default:
+			appType = ""
+			detail = ""
+		}
+
+		if detail != "" {
+			fmt.Fprintf(out, "  %s — %s\n", ep.Path, detail)
+		} else {
+			fmt.Fprintf(out, "  %s — unknown structure (no detected frameworks)\n", ep.Path)
+		}
+
+		if appType != "" {
+			fmt.Fprintf(out, "    Suggested app_type: %s\n", appType)
+		} else {
+			fmt.Fprintf(out, "    Suggested app_type: library or check imports manually\n")
 		}
 
 		suggestedKey := config.MakeAppKey(ep.Dir)
@@ -349,6 +388,14 @@ func printRecommendations(cmd *cobra.Command, result *ScanResult) {
 		}
 		fmt.Fprintf(out, "    Suggested key:    %s\n", suggestedKey)
 		fmt.Fprintf(out, "    Root path:        %s\n", ep.Dir)
+
+		// Show body patterns found (debug info)
+		if len(ep.ServerPatterns) > 1 {
+			fmt.Fprintf(out, "    Server patterns:  %s\n", strings.Join(ep.ServerPatterns, ", "))
+		}
+		if len(ep.CLIPatterns) > 1 {
+			fmt.Fprintf(out, "    CLI patterns:     %s\n", strings.Join(ep.CLIPatterns, ", "))
+		}
 		fmt.Fprintf(out, "\n")
 	}
 

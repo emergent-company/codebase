@@ -82,11 +82,13 @@ type ScanResult struct {
 
 // EntryPoint is a main package or CLI entry point with its imports.
 type EntryPoint struct {
-	Path       string   `json:"path"`
-	Dir        string   `json:"dir"`
-	Imports    []string `json:"imports"`
-	HasMain    bool     `json:"has_main"`
-	GoModDir   string   `json:"go_mod_dir"`
+	Path           string   `json:"path"`
+	Dir            string   `json:"dir"`
+	Imports        []string `json:"imports"`
+	HasMain        bool     `json:"has_main"`
+	GoModDir       string   `json:"go_mod_dir"`
+	ServerPatterns []string `json:"server_patterns,omitempty"` // body-level server indicators found
+	CLIPatterns    []string `json:"cli_patterns,omitempty"`    // body-level CLI indicators found
 }
 
 // AppsFile is the JSON/YAML structure for --apps-file.

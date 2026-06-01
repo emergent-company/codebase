@@ -80,6 +80,9 @@ func ScanDir(repoDir string) (*ScanResult, error) {
 				ep.Imports = scanGoImports(path)
 				sort.Strings(ep.Imports)
 
+				// Scan body for behavior patterns (server vs CLI)
+				ep.ServerPatterns, ep.CLIPatterns = scanMainBehavior(path)
+
 				result.EntryPoints = append(result.EntryPoints, ep)
 			}
 		}
@@ -107,7 +110,7 @@ func ScanDir(repoDir string) (*ScanResult, error) {
 	return result, nil
 }
 
-// isEntryPoint checks if a Go file has "package main" or a main() function.
+// isEntryPoint checks if a Go file is a real entry point: package main + func main().
 func isEntryPoint(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
@@ -115,20 +118,32 @@ func isEntryPoint(path string) bool {
 	}
 	defer f.Close()
 
+	hasPkgMain := false
+	hasFuncMain := false
+
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "//") {
 			continue
 		}
+
+		// Check for "package main"
 		if strings.HasPrefix(line, "package ") {
 			pkgName := strings.TrimSpace(strings.TrimPrefix(line, "package"))
 			if pkgName == "main" {
-				return true
+				hasPkgMain = true
 			}
+			continue
+		}
+
+		// Check for "func main()" or "func main(" (with possible receiver or params)
+		if strings.HasPrefix(line, "func main(") || strings.HasPrefix(line, "func main()") {
+			hasFuncMain = true
 		}
 	}
-	return false
+
+	return hasPkgMain && hasFuncMain
 }
 
 // scanGoImports extracts import paths from a Go source file.
@@ -155,6 +170,14 @@ func scanGoImports(path string) []string {
 		"database/sql",
 		"github.com/redis/go-redis",
 		"github.com/stretchr/testify",
+		"github.com/joho/godotenv",   // CLI .env loading
+		"github.com/charmbracelet/bubbletea", // TUI framework
+		"github.com/charmbracelet/bubbles",   // TUI components
+		"github.com/charmbracelet/lipgloss",  // TUI styling
+		"github.com/gdamore/tcell/v2",       // TUI terminal
+		"github.com/rivo/tview",             // TUI framework
+		"github.com/pterm/pterm",             // TUI output
+		"github.com/fatih/color",            // TUI coloring
 	}
 
 	var imports []string
@@ -188,4 +211,83 @@ func scanGoImports(path string) []string {
 	}
 
 	return imports
+}
+
+// scanMainBehavior reads the file body to detect server vs CLI usage patterns.
+// Returns (serverPatterns, cliPatterns) — slices of matched pattern descriptions.
+func scanMainBehavior(path string) (serverPatterns, cliPatterns []string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil
+	}
+	content := string(data)
+
+	// Server indicators — things that start an HTTP server
+	serverChecks := []struct {
+		pattern     string
+		description string
+	}{
+		{"http.ListenAndServe", "calls http.ListenAndServe"},
+		{"http.Server{", "creates http.Server struct"},
+		{"http.ServeMux", "uses http.ServeMux"},
+		{"http.Serve(", "calls http.Serve"},
+		{"echo.New()", "uses Echo framework"},
+		{"gin.Default()", "uses Gin framework"},
+		{"chi.NewRouter()", "uses Chi router"},
+		{"mux.NewRouter()", "uses gorilla/mux"},
+		{".Use(middleware.", "applies middleware"},
+		{"e.GET(", "Echo GET route"},
+		{"e.POST(", "Echo POST route"},
+		{"e.PUT(", "Echo PUT route"},
+		{"e.DELETE(", "Echo DELETE route"},
+		{"e.PATCH(", "Echo PATCH route"},
+		{"r.GET(", "Router GET route"},
+		{"r.POST(", "Router POST route"},
+		{"r.Use(", "Router middleware"},
+		{"router.GET(", "Router GET route"},
+		{"router.POST(", "Router POST route"},
+		{"router.Use(", "Router middleware"},
+		{"fx.New(", "uses fx DI framework"},
+		{"fx.Invoke(", "uses fx DI framework"},
+		{"app.Start(", "starts app via fx"},
+	}
+
+	// CLI indicators — things that suggest a command-line tool
+	cliChecks := []struct {
+		pattern     string
+		description string
+	}{
+		{"os.Args", "reads os.Args"},
+		{"flag.Parse(", "parses flags"},
+		{"flag.String(", "defines string flag"},
+		{"flag.Bool(", "defines bool flag"},
+		{"flag.Int(", "defines int flag"},
+		{"flag.Duration(", "defines duration flag"},
+		{"flag.Float64(", "defines float flag"},
+		{"flag.Uint(", "defines uint flag"},
+		{"bufio.NewReader(os.Stdin)", "reads from stdin"},
+		{"bufio.NewScanner(os.Stdin)", "scans stdin"},
+		{"os.Stdin", "accesses stdin"},
+		{"os.Exit(", "calls os.Exit"},
+		{"cobra.Command", "uses Cobra commands"},
+		{"cobra.RootCommand", "uses Cobra root command"},
+		{"godotenv.Load(", "loads .env file"},
+		{"fmt.Fprintf(os.Stderr", "writes to stderr"},
+		{"fmt.Fprintln(os.Stderr", "writes to stderr"},
+		{"fmt.Fprint(os.Stderr", "writes to stderr"},
+	}
+
+	for _, check := range serverChecks {
+		if strings.Contains(content, check.pattern) {
+			serverPatterns = append(serverPatterns, check.description)
+		}
+	}
+
+	for _, check := range cliChecks {
+		if strings.Contains(content, check.pattern) {
+			cliPatterns = append(cliPatterns, check.description)
+		}
+	}
+
+	return serverPatterns, cliPatterns
 }
