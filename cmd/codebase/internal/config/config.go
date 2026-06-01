@@ -57,6 +57,14 @@ type SyncActionsConfig struct {
 	Pattern string `yaml:"pattern"`
 }
 
+// SyncCommandsConfig configures `codebase sync commands` — CLI command extraction.
+type SyncCommandsConfig struct {
+	// Glob pattern for command entry point files. Defaults to "cmd/*/main.go,main.go".
+	Glob string `yaml:"glob"`
+	// Domain to assign discovered CLI commands. Defaults to the app domain or empty.
+	Domain string `yaml:"domain"`
+}
+
 // SyncScenariosConfig configures `codebase sync scenarios`.
 type SyncScenariosConfig struct {
 	// File is the path to the scenarios definition YAML (relative to repo root).
@@ -76,6 +84,7 @@ type SyncConfig struct {
 	Views      SyncViewsConfig      `yaml:"views"`
 	Components SyncComponentsConfig `yaml:"components"`
 	Actions    SyncActionsConfig    `yaml:"actions"`
+	Commands   SyncCommandsConfig   `yaml:"commands"`
 	Scenarios  SyncScenariosConfig  `yaml:"scenarios"`
 }
 
@@ -297,7 +306,8 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 
 	yml, _ := findAndParseYML()
 
-	// Auth priority: actual env var > .env.local > .env > .codebase.yml > ~/.memory/config.yaml.
+	// Auth priority: CODEBASE_API_KEY env var > .env.local > .env > .codebase.yml.
+	// Never fall through to ~/.memory/config.yaml — the codebase CLI only uses its own key.
 	if ak := os.Getenv("CODEBASE_API_KEY"); ak != "" {
 		os.Setenv("MEMORY_API_KEY", ak)
 	} else if envAK != "" {
@@ -306,6 +316,10 @@ func New(flagProjectID, flagBranch string) (*Client, error) {
 		if err := os.Setenv("MEMORY_API_KEY", yml.APIKey); err != nil {
 			return nil, fmt.Errorf("exporting api_key from .codebase.yml: %w", err)
 		}
+	}
+
+	if os.Getenv("MEMORY_API_KEY") == "" {
+		return nil, fmt.Errorf("no CODEBASE_API_KEY found: set via CODEBASE_API_KEY env var, .env, .env.local, or api_key in .codebase.yml")
 	}
 
 	sdkClient, err := sdk.NewFromEnv()

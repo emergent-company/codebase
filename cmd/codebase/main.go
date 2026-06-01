@@ -56,7 +56,7 @@ var rootCmd = &cobra.Command{
 	Version: Version,
 	Long: `codebase — populate, audit, and explore the Memory knowledge graph for your codebase.
 
-Auth: reads from CODEBASE_API_KEY env var, .codebase.yml api_key, or ~/.memory/config.yaml.
+Auth: reads from CODEBASE_API_KEY env var, .env/.env.local files, or .codebase.yml api_key.
 Project: reads from CODEBASE_PROJECT_ID env var, .codebase.yml project_id or project name.
 
 Examples:
