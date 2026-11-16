@@ -1,5 +1,5 @@
 name: code-structure
-version: 1.0.0
+version: 1.0.1
 description: >
   General-purpose structural schema for mapping any software project.
   Covers the architectural layer: apps, modules, pages, components, services,
@@ -36,6 +36,7 @@ objectTypes:
         description: "Default local development port"
       description:
         type: string
+        format: markdown
 
   - name: Module
     label: Module
@@ -51,9 +52,11 @@ objectTypes:
         description: "Primary language. E.g. go, typescript, python, swift"
       purpose:
         type: string
+        format: markdown
         description: "What this module does"
       description:
         type: string
+        format: markdown
 
   - name: SourceFile
     label: Source File
@@ -67,9 +70,11 @@ objectTypes:
         description: "Programming language. E.g. go, typescript, python"
       purpose:
         type: string
+        format: markdown
         description: "What this file contains or does"
       description:
         type: string
+        format: markdown
 
   - name: Context
     label: Context
@@ -100,6 +105,7 @@ objectTypes:
         description: "Target platforms. E.g. [ios], [android], [web]"
       description:
         type: string
+        format: markdown
 
   - name: Wireframe
     label: Wireframe
@@ -123,9 +129,11 @@ objectTypes:
         description: "UI state depicted. E.g. default, empty, loading, error, success"
       notes:
         type: string
+        format: markdown
         description: "Design annotations or constraints not expressible in ASCII"
       description:
         type: string
+        format: markdown
 
   - name: UIComponent
     label: UI Component
@@ -139,6 +147,7 @@ objectTypes:
         description: "Component category. E.g. primitive, composite, layout, container"
       description:
         type: string
+        format: markdown
 
   - name: Action
     label: Action
@@ -155,6 +164,7 @@ objectTypes:
         description: "Human-readable label shown in the UI. E.g. Save Changes, Delete User"
       description:
         type: string
+        format: markdown
 
   - name: Actor
     label: Actor
@@ -167,6 +177,7 @@ objectTypes:
         description: "Human-readable name. E.g. Guest User, Admin"
       description:
         type: string
+        format: markdown
 
   - name: Scenario
     label: Scenario
@@ -193,6 +204,7 @@ objectTypes:
         description: "Additional outcomes. E.g. [user is redirected to dashboard]"
       description:
         type: string
+        format: markdown
 
   - name: ScenarioStep
     label: Scenario Step
@@ -205,6 +217,7 @@ objectTypes:
         description: "Step order — 1, 2, 3, ..."
       description:
         type: string
+        format: markdown
 
   - name: Service
     label: Service
@@ -214,6 +227,7 @@ objectTypes:
     properties:
       description:
         type: string
+        format: markdown
 
   - name: DataModel
     label: Data Model
@@ -234,6 +248,7 @@ objectTypes:
         description: "How instances are stored. E.g. sqlite, postgres, memory, none"
       description:
         type: string
+        format: markdown
 
   - name: Database
     label: Database / Store
@@ -252,6 +267,7 @@ objectTypes:
         description: "Hostname or connection hint for non-local stores"
       description:
         type: string
+        format: markdown
 
   - name: APIEndpoint
     label: API Endpoint
@@ -268,6 +284,7 @@ objectTypes:
         description: "Whether authentication is required"
       description:
         type: string
+        format: markdown
 
   - name: APIContract
     label: API Contract
@@ -289,6 +306,7 @@ objectTypes:
         description: "Base URL for the API"
       description:
         type: string
+        format: markdown
 
   - name: Event
     label: Event / Message
@@ -304,6 +322,7 @@ objectTypes:
         description: "Transport mechanism. E.g. kafka, rabbitmq, websocket, sns, in-process"
       description:
         type: string
+        format: markdown
 
   - name: Middleware
     label: Middleware
@@ -319,6 +338,7 @@ objectTypes:
         description: "Scope of application. E.g. all routes, /api/*, admin only"
       description:
         type: string
+        format: markdown
 
   - name: Job
     label: Job / Worker
@@ -334,6 +354,7 @@ objectTypes:
         description: "Cron expression or interval for scheduled jobs. E.g. 0 * * * *"
       description:
         type: string
+        format: markdown
 
   - name: ExternalDependency
     label: External Dependency
@@ -355,6 +376,7 @@ objectTypes:
         description: "URL to the source repository. Used for tracking releases, changelogs, and updates. E.g. https://github.com/robfig/cron"
       description:
         type: string
+        format: markdown
 
   - name: ConfigVar
     label: Config Variable
@@ -376,6 +398,7 @@ objectTypes:
         description: "Whether this holds a secret and should not be logged"
       description:
         type: string
+        format: markdown
 
   - name: Pattern
     label: Pattern
@@ -394,9 +417,11 @@ objectTypes:
         description: "Path to a canonical example file"
       usage_guidance:
         type: string
+        format: markdown
         description: "When and how to apply this pattern"
       description:
         type: string
+        format: markdown
 
   - name: TestSuite
     label: Test Suite
@@ -415,6 +440,7 @@ objectTypes:
         description: "Approximate code coverage percentage"
       description:
         type: string
+        format: markdown
 
 relationshipTypes:
 
