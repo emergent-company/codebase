@@ -1,5 +1,5 @@
 name: technology-catalog
-version: "1.0.0"
+version: "1.0.1"
 description: >
   Catalog of technologies, algorithms, and techniques relevant to AI agent
   memory management, retrieval, context management, and skill building.
@@ -29,6 +29,7 @@ objectTypes:
         description: "Technology name. E.g. 'HRR Compositional Retrieval', 'Dialectic Reasoning'"
       description:
         type: string
+        format: markdown
         description: "What this technology does and how it works"
       category:
         type: string
@@ -47,15 +48,19 @@ objectTypes:
         description: "URL to the source project or documentation"
       relevance_to_diane:
         type: string
+        format: markdown
         description: "How this technology could be applied to Diane's memory system"
       pros:
         type: string
+        format: markdown
         description: "Key advantages of this approach"
       cons:
         type: string
+        format: markdown
         description: "Key limitations or trade-offs"
       implementation_notes:
         type: string
+        format: markdown
         description: "Technical notes on how this could be implemented"
 
   # ── ArchitecturePattern ────────────────────────────────────────────────────
@@ -71,12 +76,14 @@ objectTypes:
         description: "Pattern name. E.g. 'Three-Tier Memory', 'Hierarchical Retrieval'"
       description:
         type: string
+        format: markdown
         description: "What this pattern does"
       domain:
         type: string
         description: "Domain: memory, retrieval, context, skills, overall"
       tradeoffs:
         type: string
+        format: markdown
         description: "Design trade-offs and decision factors"
 
   # ── Scenario (cross-pack reference stub) ─────────────────────────────────
@@ -105,12 +112,14 @@ objectTypes:
         description: "Area name. E.g. 'Automatic Skill Building', 'Memory Dreaming'"
       description:
         type: string
+        format: markdown
         description: "What this area is about"
       status:
         type: string
         description: "Status: open-problem, emerging-solutions, actively-researched, saturated"
       competitive_landscape:
         type: string
+        format: markdown
         description: "Who is working on this and what's the state of the art"
 
 # ─────────────────────────────────────────────────────────────────────────────

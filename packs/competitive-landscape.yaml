@@ -1,5 +1,5 @@
 name: competitive-landscape
-version: "1.0.0"
+version: "1.0.1"
 description: >
   Schema for tracking competitors, market landscape, and strategic analysis
   for Diane as a personal AI agent. Covers competitor projects, positioning,
@@ -28,6 +28,7 @@ objectTypes:
         description: "Project/product name. E.g. 'Hermes', 'ChatGPT Personal'"
       description:
         type: string
+        format: markdown
         description: "What this competitor does"
       status:
         type: string
@@ -63,6 +64,7 @@ objectTypes:
         description: "Key technologies. E.g. [Go, TypeScript, SwiftUI, React]"
       notes:
         type: string
+        format: markdown
         description: "Additional notes about this competitor"
 
   # ── Competitor Feature ────────────────────────────────────────────────────
@@ -78,6 +80,7 @@ objectTypes:
         description: "Feature name. E.g. 'MCP Proxy', 'Agent Runner', 'Knowledge Graph', 'Chat UI'"
       description:
         type: string
+        format: markdown
         description: "What this feature does"
       capability_area:
         type: string
@@ -103,9 +106,11 @@ objectTypes:
         description: "Diane's relative strength: stronger, equal, weaker, missing"
       reasoning:
         type: string
+        format: markdown
         description: "Why this assessment. E.g. 'Diane has 69+ tools, Hermes has 12'"
       evidence:
         type: string
+        format: markdown
         description: "Concrete evidence or data point supporting the assessment"
       priority:
         type: string
@@ -124,6 +129,7 @@ objectTypes:
         description: "Initiative title"
       description:
         type: string
+        format: markdown
         description: "What needs to be done and why"
       competitive_driver:
         type: string
@@ -154,9 +160,11 @@ objectTypes:
         description: "Trend name. E.g. 'MCP Standardization', 'Agent-to-Agent Protocols'"
       description:
         type: string
+        format: markdown
         description: "What this trend is about"
       impact_on_diane:
         type: string
+        format: markdown
         description: "How this trend affects Diane positively or negatively"
       impact_level:
         type: string
@@ -188,6 +196,7 @@ objectTypes:
         description: "List of competitor names included in this matrix"
       summary:
         type: string
+        format: markdown
         description: "Key takeaways from the comparison"
 
   # ── Feature Gap ───────────────────────────────────────────────────────────
@@ -203,6 +212,7 @@ objectTypes:
         description: "Short name for this gap. E.g. 'iOS App', 'Voice Input'"
       description:
         type: string
+        format: markdown
         description: "What's missing and why it matters"
       competitors_have_it:
         type: array
@@ -237,6 +247,7 @@ objectTypes:
         description: "Currency. E.g. USD, EUR"
       notes:
         type: string
+        format: markdown
         description: "Additional pricing details"
 
   # ── Integration ───────────────────────────────────────────────────────────
@@ -257,6 +268,7 @@ objectTypes:
         description: "How mature: experimental, beta, production"
       notes:
         type: string
+        format: markdown
         description: "Additional details about the integration"
 
   # ── Scenario (cross-pack reference stub) ─────────────────────────────────
